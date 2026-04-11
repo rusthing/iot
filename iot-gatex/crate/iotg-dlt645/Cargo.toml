@@ -1,0 +1,12 @@
+[package]
+name    = "iotg-dlt645"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+iotg-core   = { workspace = true }
+tokio       = { workspace = true }
+serde       = { workspace = true }
+anyhow      = { workspace = true }
+tracing     = { workspace = true }
+async-trait = { workspace = true }

@@ -1,0 +1,17 @@
+[package]
+name = "iotg-iec104"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true, features = ["net"] }
+bytes = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+
+wheel-rs = { workspace = true }
+
+iotg-core = { workspace = true }
