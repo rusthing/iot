@@ -31,7 +31,7 @@ impl Default for MqttSinkConfig {
             host: "127.0.0.1".into(),
             port: 1883,
             client_id: "iot-gatex".into(),
-            topic_prefix: "gatex".into(),
+            topic_prefix: "iot-gatex".into(),
             qos: 1,
             channel_capacity: 1024,
             username: None,

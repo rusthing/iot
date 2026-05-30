@@ -24,43 +24,66 @@ pub struct Iec104Driver {
 }
 
 impl Iec104Driver {
-    pub fn new(cfg: Iec104Config) -> Self { Self { cfg } }
+    pub fn new(cfg: Iec104Config) -> Self {
+        Self { cfg }
+    }
 }
 
 #[async_trait]
 impl Driver for Iec104Driver {
-    fn protocol(&self) -> &'static str { "iec104" }
-    fn name(&self) -> &str { &self.cfg.name }
+    fn protocol(&self) -> &'static str {
+        "iec104"
+    }
+    fn name(&self) -> &str {
+        &self.cfg.name
+    }
 
     async fn run(self: Box<Self>, tx: mpsc::Sender<Batch>) {
         let addr = format!("{}:{}", self.cfg.host, self.cfg.port);
         loop {
-            info!(driver = %self.cfg.name, %addr, "connecting");
+            info!(device = %self.cfg.name, %addr, "connecting");
             match TcpStream::connect(&addr).await {
                 Ok(stream) => {
                     if let Err(e) = session(&self.cfg, stream, &tx).await {
-                        error!(driver = %self.cfg.name, "session: {:#}", e);
+                        error!(device = %self.cfg.name, "session: {:#}", e);
                     }
                 }
-                Err(e) => warn!(driver = %self.cfg.name, "connect: {e}"),
+                Err(e) => warn!(device = %self.cfg.name, "connect: {e}"),
             }
-            if tx.is_closed() { break; }
-            sleep(Duration::from_secs(self.cfg.reconnect_secs)).await;
+            if tx.is_closed() {
+                break;
+            }
+            sleep(self.cfg.reconnect_interval).await;
         }
     }
 }
 
-// ── 会话状态 ──────────────────────────────────────────────────────────────
-
+/// 会话状态
 #[derive(PartialEq, Eq)]
-enum State { Connecting, Started }
+enum State {
+    Connecting,
+    Started,
+}
 
 #[derive(Default)]
-struct Seq { vs: u16, vr: u16, unacked_recv: u16 }
+struct Seq {
+    /// 发送序列号
+    vs: u16,
+    /// 接收序列号
+    vr: u16,
+    /// 未确认接收帧数
+    unacked_recv: u16,
+}
 
 impl Seq {
-    fn next_vs(&mut self) -> u16 { let s = self.vs; self.vs = (self.vs + 1) % 32768; s }
-    fn inc_vr(&mut self) { self.vr = (self.vr + 1) % 32768; }
+    fn next_vs(&mut self) -> u16 {
+        let s = self.vs;
+        self.vs = (self.vs + 1) % 32768;
+        s
+    }
+    fn inc_vr(&mut self) {
+        self.vr = (self.vr + 1) % 32768;
+    }
 }
 
 async fn session(
@@ -69,9 +92,9 @@ async fn session(
     tx: &mpsc::Sender<Batch>,
 ) -> anyhow::Result<()> {
     stream.set_nodelay(true)?;
-    let mut seq   = Seq::default();
+    let mut seq = Seq::default();
     let mut state = State::Connecting;
-    let mut buf   = BytesMut::with_capacity(4096);
+    let mut buf = BytesMut::with_capacity(4096);
     let mut last_recv = Instant::now();
     let mut testfr_at: Option<Instant> = None;
 
@@ -80,11 +103,11 @@ async fn session(
 
     loop {
         // t3 空闲检测
-        if last_recv.elapsed() >= cfg.t3() && testfr_at.is_none() {
+        if last_recv.elapsed() >= cfg.t3 && testfr_at.is_none() {
             write(&mut stream, Frame::U(UType::TestFrAct)).await?;
             testfr_at = Some(Instant::now());
         }
-        if testfr_at.map_or(false, |t| t.elapsed() >= cfg.t1()) {
+        if testfr_at.map_or(false, |t| t.elapsed() >= cfg.t1) {
             anyhow::bail!("TESTFR timeout");
         }
         // 接收窗口满时主动发 S 帧
@@ -97,7 +120,11 @@ async fn session(
         let mut tmp = [0u8; 4096];
         match timeout(Duration::from_millis(100), stream.read(&mut tmp)).await {
             Ok(Ok(0)) => anyhow::bail!("remote closed"),
-            Ok(Ok(n)) => { buf.extend_from_slice(&tmp[..n]); last_recv = Instant::now(); testfr_at = None; }
+            Ok(Ok(n)) => {
+                buf.extend_from_slice(&tmp[..n]);
+                last_recv = Instant::now();
+                testfr_at = None;
+            }
             Ok(Err(e)) => return Err(e.into()),
             Err(_) => {}
         }
@@ -110,7 +137,11 @@ async fn session(
                     dispatch(cfg, &frame, &mut stream, &mut seq, &mut state, tx).await?;
                 }
                 Ok(None) => break,
-                Err(e) => { warn!(driver=%cfg.name, "decode: {e}"); buf.clear(); break; }
+                Err(e) => {
+                    warn!(driver=%cfg.name, "decode: {e}");
+                    buf.clear();
+                    break;
+                }
             }
         }
     }
@@ -131,14 +162,28 @@ async fn dispatch(
             if cfg.auto_interrogate {
                 let apdu = asdu::interrogation_cmd(cfg.ca, cfg.qoi);
                 let sn = seq.next_vs();
-                write(stream, Frame::I { send_sn: sn, recv_sn: seq.vr, apdu }).await?;
+                write(
+                    stream,
+                    Frame::I {
+                        send_sn: sn,
+                        recv_sn: seq.vr,
+                        apdu,
+                    },
+                )
+                .await?;
             }
         }
         Frame::U(UType::TestFrAct) => write(stream, Frame::U(UType::TestFrCon)).await?,
         Frame::U(UType::TestFrCon) => {}
         Frame::S { .. } => {}
-        Frame::I { send_sn, recv_sn: _, apdu } => {
-            if *state != State::Started { return Ok(()); }
+        Frame::I {
+            send_sn,
+            recv_sn: _,
+            apdu,
+        } => {
+            if *state != State::Started {
+                return Ok(());
+            }
             if *send_sn != seq.vr {
                 warn!(driver=%cfg.name, expected=seq.vr, got=send_sn, "seq mismatch");
             }
@@ -148,7 +193,8 @@ async fn dispatch(
             let batch = asdu::parse(&cfg.name, cfg.ca, apdu)?;
             if !batch.is_empty() {
                 debug!(driver=%cfg.name, n=batch.len(), "-> channel");
-                tx.send(batch).await
+                tx.send(batch)
+                    .await
                     .map_err(|_| anyhow::anyhow!("sink channel closed"))?;
             }
 

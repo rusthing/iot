@@ -36,7 +36,7 @@ pub struct AppConfig {
 /// TOML 中用 `type = "iec104"` 等字段区分驱动类型
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
-enum DriverConfig {
+pub enum DriverConfig {
     Iec104(Iec104Config),
     Modbus(ModbusConfig),
     Dlt645(Dlt645Config),
