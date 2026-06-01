@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
-use iot_gatex::app::{AppConfig, DriverConfig, set_app_config};
-use iotg_core::{Batch, CHANNEL_CAP, Driver};
+use iot_gatex::app::{set_app_config, AppConfig, DriverConfig};
+use iotg_core::{Batch, Driver, CHANNEL_CAP};
 use iotg_dlt645::Dlt645Driver;
 use iotg_hj212::Hj212Driver;
 use iotg_iec104::Iec104Driver;
@@ -71,8 +71,7 @@ async fn main() -> anyhow::Result<()> {
     let files = Arc::new(files);
 
     // 监听配置文件变化
-    let files = files.clone();
-    watch_cfg_file!("app", {
+    watch_cfg_file!("app", files.clone(), {
         let (app_config, _) =
             build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
         apply_app_config(app_config, None)
@@ -94,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[log_call]
-async fn apply_app_config(app_config: AppConfig, old_pid: Option<i32>) -> anyhow::Result<()> {
+async fn apply_app_config(app_config: AppConfig, old_pid: Option<u32>) -> anyhow::Result<()> {
     debug!("应用App配置...");
     let AppConfig { mqtt, drivers } = app_config.clone();
     set_app_config(app_config)?;
