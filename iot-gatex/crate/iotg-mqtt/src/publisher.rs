@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use rumqttc::{AsyncClient, EventLoop, MqttOptions, QoS};
 use serde_json::json;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
+use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 
 use iotg_core::model::{Batch, DataPoint, Value};
@@ -46,6 +50,8 @@ fn serialize(pt: &DataPoint) -> Vec<u8> {
 pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
     let qos = to_qos(cfg.qos);
     let prefix = cfg.topic_prefix.clone();
+    let prefix_clone = prefix.clone();
+    let flush_interval = cfg.flush_interval;
 
     let mut opts = MqttOptions::new(&cfg.client_id, &cfg.host, cfg.port);
     opts.set_keep_alive(std::time::Duration::from_secs(cfg.keepalive_secs));
@@ -59,16 +65,39 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
     // rumqttc eventloop 必须持续 poll 才能驱动内部发送队列
     tokio::spawn(drive_eventloop(eventloop));
 
-    info!(host = %cfg.host, port = cfg.port, prefix = %prefix, "mqtt sink ready");
+    // 缓存，key = topic，用于同名覆盖
+    let cache: Arc<RwLock<HashMap<String, DataPoint>>> = Arc::new(RwLock::new(HashMap::new()));
+    let cache_clone = cache.clone();
+
+    tokio::spawn(async move {
+        let mut ticker = interval(flush_interval);
+        loop {
+            ticker.tick().await;
+            let cached = cache_clone.read().await;
+            if cached.is_empty() {
+                continue;
+            }
+            for pt in cached.values() {
+                let topic = pt.mqtt_topic(&prefix);
+                let payload = serialize(pt);
+                if let Err(e) = client.publish(&topic, qos, false, payload).await {
+                    warn!("mqtt publish {topic}: {e}");
+                }
+            }
+            let cached_len = cached.len();
+            drop(cached);
+            cache_clone.write().await.clear();
+            debug!("mqtt sink: flushed {} points", cached_len);
+        }
+    });
+
+    info!(host = %cfg.host, port = cfg.port, prefix = %prefix_clone, "mqtt sink ready");
 
     while let Some(batch) = rx.recv().await {
-        for pt in &batch {
-            let topic = pt.mqtt_topic(&prefix);
-            let payload = serialize(pt);
-            debug!(topic = %topic, "publish");
-            if let Err(e) = client.publish(&topic, qos, false, payload).await {
-                warn!("mqtt publish {topic}: {e}");
-            }
+        let mut cached = cache.write().await;
+        for pt in batch {
+            let topic = pt.mqtt_topic(&prefix_clone);
+            cached.insert(topic, pt);
         }
     }
 
@@ -81,7 +110,7 @@ async fn drive_eventloop(mut ev: EventLoop) {
             Ok(notification) => debug!("mqtt: {:?}", notification),
             Err(e) => {
                 error!("mqtt eventloop: {e:#}");
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
     }

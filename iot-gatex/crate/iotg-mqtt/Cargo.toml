@@ -1,14 +1,17 @@
 [package]
-name    = "iotg-mqtt"
+name = "iotg-mqtt"
 version = "1.0.0"
 edition = "2024"
 
 [dependencies]
-iotg-core  = { workspace = true }
-tokio      = { workspace = true }
-serde      = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
-anyhow     = { workspace = true }
-tracing    = { workspace = true }
-rumqttc    = { workspace = true }
-hex        = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+hex = { workspace = true }
+rumqttc = { workspace = true }
+
+iotg-core = { workspace = true }
+
+wheel-rs = { workspace = true }

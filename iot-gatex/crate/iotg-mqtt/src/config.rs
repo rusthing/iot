@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use wheel_rs::serde::duration_serde;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MqttSinkConfig {
@@ -23,27 +25,47 @@ pub struct MqttSinkConfig {
     /// keep-alive 秒数
     #[serde(default = "default_keepalive")]
     pub keepalive_secs: u64,
+    /// rumqttc 内部 channel 容量
+    #[serde(with = "duration_serde", default = "default_flush_interval")]
+    pub flush_interval: Duration,
 }
 
 impl Default for MqttSinkConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 1883,
-            client_id: "iot-gatex".into(),
-            topic_prefix: "iot-gatex".into(),
-            qos: 1,
-            channel_capacity: 1024,
+            port: default_port(),
+            client_id: default_client_id(),
+            topic_prefix: default_prefix(),
+            qos: default_qos(),
+            channel_capacity: default_cap(),
             username: None,
             password: None,
-            keepalive_secs: 30,
+            keepalive_secs: default_keepalive(),
+            flush_interval: default_flush_interval(),
         }
     }
 }
 
-fn default_port() -> u16 { 1883 }
-fn default_client_id() -> String { "iot-gatex".into() }
-fn default_prefix() -> String { "gatex".into() }
-fn default_qos() -> u8 { 1 }
-fn default_cap() -> usize { 1024 }
-fn default_keepalive() -> u64 { 30 }
+fn default_port() -> u16 {
+    1883
+}
+fn default_client_id() -> String {
+    "iot-gatex".into()
+}
+fn default_prefix() -> String {
+    "gatex".into()
+}
+fn default_qos() -> u8 {
+    1
+}
+fn default_cap() -> usize {
+    1024
+}
+fn default_keepalive() -> u64 {
+    30
+}
+
+fn default_flush_interval() -> Duration {
+    Duration::from_secs(30)
+}
