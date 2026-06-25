@@ -18,7 +18,7 @@ thiserror = "2.0.18"
 clap = "4.6.1"
 async-trait = "0.1.89"
 tracing = "0.1.44"
-chrono = "0.4.44"
+chrono = "0.4.45"
 serde = "1.0.228"
 serde_json = "1.0.150"
 serde_with = "3.20.0"
@@ -30,8 +30,8 @@ hex = "0.4.3"
 rumqttc = "0.25.1"
 notify-debouncer-mini = "0.7.0"
 
-wheel-rs = "1.6.1"
-robotech = "1.6.4"
+wheel-rs = "1.7.0"
+robotech = "1.7.0"
 
 iotg-core = { path = "crate/iotg-core" }
 iotg-iec104 = { path = "crate/iotg-iec104" }

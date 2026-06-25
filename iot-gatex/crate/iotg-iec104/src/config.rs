@@ -22,6 +22,9 @@ pub struct Iec104Config {
     /// 最大未确认接收 I 帧数（接收窗口）
     #[serde(default = "default_w")]
     pub w: u16,
+    /// 连接超时时间
+    #[serde(with = "duration_serde", default = "default_t0")]
+    pub t0: Duration,
     /// 发送或测试 APDU 的超时时间
     #[serde(with = "duration_serde", default = "default_t1")]
     pub t1: Duration,
@@ -50,6 +53,9 @@ fn default_k() -> u16 {
 }
 fn default_w() -> u16 {
     8
+}
+fn default_t0() -> Duration {
+    Duration::from_secs(30)
 }
 fn default_t1() -> Duration {
     Duration::from_secs(15)

@@ -42,13 +42,14 @@ impl Driver for Iec104Driver {
         let addr = format!("{}:{}", self.cfg.host, self.cfg.port);
         loop {
             info!(device = %self.cfg.name, %addr, "connecting");
-            match TcpStream::connect(&addr).await {
-                Ok(stream) => {
+            match timeout(self.cfg.t0, TcpStream::connect(&addr)).await {
+                Ok(Ok(stream)) => {
                     if let Err(e) = session(&self.cfg, stream, &tx).await {
                         error!(device = %self.cfg.name, "session: {:#}", e);
                     }
                 }
-                Err(e) => warn!(device = %self.cfg.name, "connect: {e}"),
+                Ok(Err(e)) => warn!(device = %self.cfg.name, "connect: {e}"),
+                Err(_) => warn!(device = %self.cfg.name, "connect timeout"),
             }
             if tx.is_closed() {
                 break;
