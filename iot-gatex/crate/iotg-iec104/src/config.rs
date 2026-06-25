@@ -8,12 +8,16 @@ pub struct Iec104Config {
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
-    pub ca: u16,
     /// 断开后重连的间隔
     #[serde(with = "duration_serde", default = "default_reconnect")]
     pub reconnect_interval: Duration,
+    /// 前缀
+    #[serde(default = "default_ca")]
+    pub ca_prefix: String,
     #[serde(default = "default_true")]
     pub auto_interrogate: bool,
+    /// # 总召唤限定词，用于指定总召唤的范围和类型
+    /// 默认20为全站总召唤
     #[serde(default = "default_qoi")]
     pub qoi: u8,
     /// 最大未确认 I 帧数（发送窗口）
@@ -22,16 +26,18 @@ pub struct Iec104Config {
     /// 最大未确认接收 I 帧数（接收窗口）
     #[serde(default = "default_w")]
     pub w: u16,
-    /// 连接超时时间
+    /// # TCP 连接的超时时间
     #[serde(with = "duration_serde", default = "default_t0")]
     pub t0: Duration,
-    /// 发送或测试 APDU 的超时时间
+    /// # 发送U帧和I帧后等待确认的超时时间
+    /// 发送每一个U帧和I帧都要计时，超时后断开重连
     #[serde(with = "duration_serde", default = "default_t1")]
     pub t1: Duration,
-    /// 无数据报文时发送 S 帧确认的超时
+    /// # 无数据报文时发送 S 帧确认的超时
     #[serde(with = "duration_serde", default = "default_t2")]
     pub t2: Duration,
-    /// 无数据传输时发送测试帧的超时
+    /// # 空闲的超时时间
+    /// 如果超时了就发送测试帧
     #[serde(with = "duration_serde", default = "default_t3")]
     pub t3: Duration,
 }
@@ -44,6 +50,9 @@ fn default_reconnect() -> Duration {
 }
 fn default_true() -> bool {
     true
+}
+fn default_ca() -> String {
+    "ca".to_string()
 }
 fn default_qoi() -> u8 {
     20

@@ -1,11 +1,11 @@
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
-use iotg_core::IotgError;
 use iotg_core::model::{DataPoint, Quality, Value};
+use iotg_core::IotgError;
 use wheel_rs::time_utils::get_current_timestamp;
 
 /// 解析 ASDU，返回数据点列表
-pub fn parse(driver: &str, ca: u16, apdu: &Bytes) -> Result<Vec<DataPoint>, IotgError> {
+pub fn parse(driver: &str, ca_prefix: &str, apdu: &Bytes) -> Result<Vec<DataPoint>, IotgError> {
     if apdu.len() < 6 {
         return Err(IotgError::Parse("apdu too short".to_string()));
     }
@@ -15,9 +15,9 @@ pub fn parse(driver: &str, ca: u16, apdu: &Bytes) -> Result<Vec<DataPoint>, Iotg
     let n = (sq_num & 0x7F) as usize;
     // let cot   = apdu[2] & 0x3F; // 可用于过滤
     let ca_local = u16::from_le_bytes([apdu[4], apdu[5]]);
-    let ca_used = ca_local; // 优先使用帧里的 CA
+    let ca_used = ca_local;
 
-    let device_id = format!("ca{}", ca_used);
+    let device_id = format!("{}{}", ca_prefix, ca_used);
     let mut out = Vec::with_capacity(n);
     let mut off = 6usize;
 
@@ -237,17 +237,6 @@ fn parse_cp56(d: &[u8]) -> Option<u64> {
 }
 
 /// 构建总召唤指令 C_IC_NA_1
-pub fn interrogation_cmd(ca: u16, qoi: u8) -> Bytes {
-    Bytes::from(vec![
-        100,
-        0x01,
-        0x06,
-        0x00,
-        (ca & 0xFF) as u8,
-        ((ca >> 8) & 0xFF) as u8,
-        0,
-        0,
-        0,
-        qoi,
-    ])
+pub fn interrogation_cmd(qoi: u8) -> Bytes {
+    Bytes::from(vec![100, 0x01, 0x06, 0x00, 0xFF, 0xFF, 0, 0, 0, qoi])
 }

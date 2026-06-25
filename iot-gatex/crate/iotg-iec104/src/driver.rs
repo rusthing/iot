@@ -161,7 +161,7 @@ async fn dispatch(
             info!(driver = %cfg.name, "session started");
             *state = State::Started;
             if cfg.auto_interrogate {
-                let apdu = asdu::interrogation_cmd(cfg.ca, cfg.qoi);
+                let apdu = asdu::interrogation_cmd(cfg.qoi);
                 let sn = seq.next_vs();
                 write(
                     stream,
@@ -191,7 +191,7 @@ async fn dispatch(
             seq.inc_vr();
             seq.unacked_recv += 1;
 
-            let batch = asdu::parse(&cfg.name, cfg.ca, apdu)?;
+            let batch = asdu::parse(&cfg.name, &cfg.ca_prefix, apdu)?;
             if !batch.is_empty() {
                 debug!(driver=%cfg.name, n=batch.len(), "-> channel");
                 tx.send(batch)
