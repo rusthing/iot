@@ -11,9 +11,12 @@ pub struct Iec104Config {
     /// 断开后重连的间隔
     #[serde(with = "duration_serde", default = "default_reconnect")]
     pub reconnect_interval: Duration,
-    /// 前缀
+    /// CA前缀
     #[serde(default = "default_ca")]
     pub ca_prefix: String,
+    /// IOA前缀
+    #[serde(default = "default_ioa")]
+    pub ioa_prefix: String,
     #[serde(default = "default_true")]
     pub auto_interrogate: bool,
     /// # 总召唤限定词，用于指定总召唤的范围和类型
@@ -53,6 +56,9 @@ fn default_true() -> bool {
 }
 fn default_ca() -> String {
     "ca".to_string()
+}
+fn default_ioa() -> String {
+    "ioa".to_string()
 }
 fn default_qoi() -> u8 {
     20

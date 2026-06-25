@@ -191,7 +191,7 @@ async fn dispatch(
             seq.inc_vr();
             seq.unacked_recv += 1;
 
-            let batch = asdu::parse(&cfg.name, &cfg.ca_prefix, apdu)?;
+            let batch = asdu::parse(&cfg.name, &cfg.ca_prefix, &cfg.ioa_prefix, apdu)?;
             if !batch.is_empty() {
                 debug!(driver=%cfg.name, n=batch.len(), "-> channel");
                 tx.send(batch)

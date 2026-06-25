@@ -1,12 +1,17 @@
 use bytes::Bytes;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use iotg_core::model::{DataPoint, Quality, Value};
 use iotg_core::IotgError;
 use wheel_rs::time_utils::get_current_timestamp;
 
 /// 解析 ASDU，返回数据点列表
-pub fn parse(driver: &str, ca_prefix: &str, apdu: &Bytes) -> Result<Vec<DataPoint>, IotgError> {
-    if apdu.len() < 6 {
+pub fn parse(
+    driver: &str,
+    ca_prefix: &str,
+    ioa_prefix: &str,
+    apdu: &Bytes,
+) -> Result<Vec<DataPoint>, IotgError> {
+    if apdu.len() < 9 {
         return Err(IotgError::Parse("apdu too short".to_string()));
     }
     let type_id = apdu[0];
@@ -21,12 +26,8 @@ pub fn parse(driver: &str, ca_prefix: &str, apdu: &Bytes) -> Result<Vec<DataPoin
     let mut out = Vec::with_capacity(n);
     let mut off = 6usize;
 
-    // 读第一个 IOA（3字节），用于 SQ 顺序寻址
-    let base_ioa = if off + 3 <= apdu.len() {
-        u32::from_le_bytes([apdu[off], apdu[off + 1], apdu[off + 2], 0])
-    } else {
-        return Ok(out);
-    };
+    // 读第一个 IOA（3B），用于 SQ 顺序寻址
+    let base_ioa = u32::from_le_bytes([apdu[off], apdu[off + 1], apdu[off + 2], 0]);
 
     for i in 0..n {
         let ioa = if sq {
@@ -38,14 +39,14 @@ pub fn parse(driver: &str, ca_prefix: &str, apdu: &Bytes) -> Result<Vec<DataPoin
             }
         } else {
             if off + 3 > apdu.len() {
-                break;
+                return Err(IotgError::Parse("apdu vsq number error".to_string()));
             }
             let v = u32::from_le_bytes([apdu[off], apdu[off + 1], apdu[off + 2], 0]);
             off += 3;
             v
         };
 
-        let tag = format!("ioa{}", ioa);
+        let tag = format!("{}{}", ioa_prefix, ioa);
 
         let Some((value, quality, consumed, field_ts)) = parse_element(type_id, &apdu[off..])
         else {
