@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use iotg_core::{Batch, Driver};
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::task::JoinSet;
 use tokio::time::{interval, sleep_until, Instant, Sleep};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -109,13 +110,15 @@ impl Session {
         // 发送 STARTDT_ACT 指令
         u_frame_writer_sender.send(UType::StartDtAct).await?;
 
+        let mut join_set = JoinSet::new();
+
         // 创建定时器定时发送总召唤指令
         let get_gi_interval = self.cfg.get_gi_interval;
         let mut gi_ticker = interval(get_gi_interval);
         let qoi = self.cfg.clone().qoi;
         let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
         let driver_name_clone = self.cfg.name.clone();
-        tokio::spawn(async move {
+        join_set.spawn(async move {
             loop {
                 gi_ticker.tick().await;
                 let asdu = gi_cmd(qoi);
@@ -132,7 +135,7 @@ impl Session {
         let qcc = self.cfg.clone().qcc;
         let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
         let driver_name_clone = self.cfg.name.clone();
-        tokio::spawn(async move {
+        join_set.spawn(async move {
             loop {
                 kwh_ticker.tick().await;
                 let asdu = kwh_cmd(qcc);

@@ -12,8 +12,8 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
-log = "0.4.30"
-anyhow = "1.0.102"
+log = "0.4.33"
+anyhow = "1.0.103"
 thiserror = "2.0.18"
 clap = "4.6.1"
 async-trait = "0.1.89"
@@ -21,11 +21,11 @@ tracing = "0.1.44"
 chrono = "0.4.45"
 serde = "1.0.228"
 serde_json = "1.0.150"
-serde_with = "3.20.0"
+serde_with = "3.21.0"
 tokio = "1.52.3"
 derive_setters = "0.1.9"
 typed-builder = "0.23.2"
-bytes = "1.11.1"
+bytes = "1.12.0"
 hex = "0.4.3"
 rumqttc = "0.25.1"
 notify-debouncer-mini = "0.7.0"
@@ -42,10 +42,10 @@ iotg-hj212 = { path = "crate/iotg-hj212" }
 iotg-mqtt = { path = "crate/iotg-mqtt" }
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
-#[patch.crates-io]
-#wheel-rs = { path = "../../wheel-rs" }
-#robotech = { path = "../../robotech-rs/robotech" }
-#robotech-macros = { path = "../../robotech-rs/robotech-macros" }
+[patch.crates-io]
+wheel-rs = { path = "../../wheel-rs" }
+robotech = { path = "../../robotech-rs/robotech" }
+robotech-macros = { path = "../../robotech-rs/robotech-macros" }
 
 [package]
 name = "iot-gatex"
