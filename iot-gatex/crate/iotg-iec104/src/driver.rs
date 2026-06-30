@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use iotg_core::{Batch, Driver};
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::sync::watch;
 use tokio::task::JoinSet;
 use tokio::time::{interval, sleep_until, Instant, Sleep};
 use tokio::{
@@ -110,15 +111,25 @@ impl Session {
         // 发送 STARTDT_ACT 指令
         u_frame_writer_sender.send(UType::StartDtAct).await?;
 
+        // 创建任务定时器，用于定时发送召唤指令
         let mut join_set = JoinSet::new();
-
+        let (mut start_task_sender, start_task_receiver) = watch::channel(false); // 初始为 false
         // 创建定时器定时发送总召唤指令
         let get_gi_interval = self.cfg.get_gi_interval;
         let mut gi_ticker = interval(get_gi_interval);
         let qoi = self.cfg.clone().qoi;
         let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
         let driver_name_clone = self.cfg.name.clone();
+        let mut start_task_receiver_clone = start_task_receiver.clone();
         join_set.spawn(async move {
+            // 等待激活
+            while !*start_task_receiver_clone.borrow() {
+                if let Err(e)=start_task_receiver_clone.changed().await {
+                    error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
+                    return ;
+                }
+            }
+            // 循环发送总召唤指令
             loop {
                 gi_ticker.tick().await;
                 let asdu = gi_cmd(qoi);
@@ -128,14 +139,25 @@ impl Session {
                 }
             }
         });
-
         // 创建定时器定时发送召唤电度指令
         let get_kwh_interval = self.cfg.get_kwh_interval;
         let mut kwh_ticker = interval(get_kwh_interval);
         let qcc = self.cfg.clone().qcc;
         let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
         let driver_name_clone = self.cfg.name.clone();
+        let mut start_task_receiver_clone = start_task_receiver.clone();
+        let kwh_delay = self.cfg.get_gi_interval / 2;
         join_set.spawn(async move {
+            // 等待激活
+            while !*start_task_receiver_clone.borrow() {
+                if let Err(e)=start_task_receiver_clone.changed().await {
+                    error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
+                    return ;
+                }
+            }
+            // 延迟启动
+            sleep(kwh_delay).await;
+            // 循环发送召唤电度指令
             loop {
                 kwh_ticker.tick().await;
                 let asdu = kwh_cmd(qcc);
@@ -231,11 +253,11 @@ impl Session {
                                     &mut i_frame_send_window,
                                     &mut i_frame_recv_window,
                                     &u_frame_writer_sender,
-                                    &i_frame_writer_sender,
                                     &s_frame_writer_sender,
                                     &mut t1_active,
                                     &mut t2_sleep,
                                     &mut t2_active,
+                                    &mut start_task_sender,
                                     &mut is_wait_u_frame_confirm,
                                 ).await?;
                             }
@@ -269,11 +291,11 @@ impl Session {
         send_window: &mut SendWindow,
         recv_window: &mut RecvWindow,
         u_frame_writer_sender: &mpsc::Sender<UType>,
-        i_frame_writer_sender: &mpsc::Sender<Bytes>,
         s_frame_writer_sender: &mpsc::Sender<()>,
         t1_active: &mut bool,
         t2_sleep: &mut Pin<&mut Sleep>,
         t2_active: &mut bool,
+        start_task_sender: &mut watch::Sender<bool>,
         is_wait_u_frame_confirm: &mut bool,
     ) -> anyhow::Result<()> {
         debug!(driver = %self.cfg.name, "dispatch frame: {:?}", frame);
@@ -284,8 +306,7 @@ impl Session {
             Frame::U(UType::StartDtCon) => {
                 info!(driver = %self.cfg.name, "session created");
                 *is_wait_u_frame_confirm = false;
-                let asdu = gi_cmd(self.cfg.qoi);
-                i_frame_writer_sender.send(asdu).await?;
+                start_task_sender.send(true)?;
             }
             Frame::U(UType::StopDtAct) => u_frame_writer_sender.send(UType::StopDtCon).await?,
             Frame::U(UType::StopDtCon) => {
@@ -315,7 +336,7 @@ impl Session {
                 // 判断接收窗口是否符合预期
                 if ns != recv_window.current() {
                     anyhow::bail!(
-                        "received I frame ns {} != expected {}",
+                        "I frame received ns expected {} but {} != ",
                         ns,
                         recv_window.current()
                     );
