@@ -9,17 +9,17 @@ pub fn parse(
     driver: &str,
     ca_prefix: &str,
     ioa_prefix: &str,
-    apdu: &Bytes,
+    asdu: &Bytes,
 ) -> Result<Vec<DataPoint>, IotgError> {
-    if apdu.len() < 9 {
-        return Err(IotgError::Parse("apdu too short".to_string()));
+    if asdu.len() < 9 {
+        return Err(IotgError::Parse("asdu too short".to_string()));
     }
-    let type_id = apdu[0];
-    let sq_num = apdu[1];
+    let type_id = asdu[0];
+    let sq_num = asdu[1];
     let sq = sq_num & 0x80 != 0;
     let n = (sq_num & 0x7F) as usize;
-    // let cot   = apdu[2] & 0x3F; // 可用于过滤
-    let ca_local = u16::from_le_bytes([apdu[4], apdu[5]]);
+    // let cot   = asdu[2] & 0x3F; // 可用于过滤
+    let ca_local = u16::from_le_bytes([asdu[4], asdu[5]]);
     let ca_used = ca_local;
 
     let device_id = format!("{}{}", ca_prefix, ca_used);
@@ -27,7 +27,7 @@ pub fn parse(
     let mut off = 6usize;
 
     // 读第一个 IOA（3B），用于 SQ 顺序寻址
-    let base_ioa = u32::from_le_bytes([apdu[off], apdu[off + 1], apdu[off + 2], 0]);
+    let base_ioa = u32::from_le_bytes([asdu[off], asdu[off + 1], asdu[off + 2], 0]);
 
     for i in 0..n {
         let ioa = if sq {
@@ -38,17 +38,17 @@ pub fn parse(
                 base_ioa + i as u32
             }
         } else {
-            if off + 3 > apdu.len() {
+            if off + 3 > asdu.len() {
                 return Err(IotgError::Parse("apdu vsq number error".to_string()));
             }
-            let v = u32::from_le_bytes([apdu[off], apdu[off + 1], apdu[off + 2], 0]);
+            let v = u32::from_le_bytes([asdu[off], asdu[off + 1], asdu[off + 2], 0]);
             off += 3;
             v
         };
 
         let tag = format!("{}{}", ioa_prefix, ioa);
 
-        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, &apdu[off..])
+        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, &asdu[off..])
         else {
             break;
         };
@@ -237,7 +237,12 @@ fn parse_cp56(d: &[u8]) -> Option<u64> {
     )
 }
 
-/// 构建总召唤指令 C_IC_NA_1
-pub fn interrogation_cmd(qoi: u8) -> Bytes {
+/// 构建总召唤(General Interrogation，GI)指令 C_IC_NA_1
+pub fn gi_cmd(qoi: u8) -> Bytes {
     Bytes::from(vec![100, 0x01, 0x06, 0x00, 0xFF, 0xFF, 0, 0, 0, qoi])
+}
+
+/// 构建电度召唤指令 C_CI_NA_1
+pub fn kwh_cmd(qcc: u8) -> Bytes {
+    Bytes::from(vec![101, 0x01, 0x06, 0x00, 0xFF, 0xFF, 0, 0, 0, qcc])
 }

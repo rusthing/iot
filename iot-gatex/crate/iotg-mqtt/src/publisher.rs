@@ -54,7 +54,7 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
     let flush_interval = cfg.flush_interval;
 
     let mut opts = MqttOptions::new(&cfg.client_id, &cfg.host, cfg.port);
-    opts.set_keep_alive(std::time::Duration::from_secs(cfg.keepalive_secs));
+    opts.set_keep_alive(Duration::from_secs(cfg.keepalive_secs));
     opts.set_clean_session(true);
     if let (Some(u), Some(p)) = (&cfg.username, &cfg.password) {
         opts.set_credentials(u, p);

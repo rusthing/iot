@@ -11,24 +11,32 @@ pub struct Iec104Config {
     /// 断开后重连的间隔
     #[serde(with = "duration_serde", default = "default_reconnect")]
     pub reconnect_interval: Duration,
+    /// 总召唤(General Interrogation)间隔
+    #[serde(with = "duration_serde", default = "default_get_gi_interval")]
+    pub get_gi_interval: Duration,
+    /// 召唤电度间隔
+    #[serde(with = "duration_serde", default = "default_get_kwh_interval")]
+    pub get_kwh_interval: Duration,
     /// CA前缀
     #[serde(default = "default_ca")]
     pub ca_prefix: String,
     /// IOA前缀
     #[serde(default = "default_ioa")]
     pub ioa_prefix: String,
-    #[serde(default = "default_true")]
-    pub auto_interrogate: bool,
     /// # 总召唤限定词，用于指定总召唤的范围和类型
     /// 默认20为全站总召唤
     #[serde(default = "default_qoi")]
     pub qoi: u8,
+    /// # 电度召唤限定词，用于指定电度召唤的范围和类型
+    /// 默认0x45为全局总召唤
+    #[serde(default = "default_qcc")]
+    pub qcc: u8,
     /// 最大未确认 I 帧数（发送窗口）
     #[serde(default = "default_k")]
-    pub k: u16,
+    pub k: usize,
     /// 最大未确认接收 I 帧数（接收窗口）
     #[serde(default = "default_w")]
-    pub w: u16,
+    pub w: usize,
     /// # TCP 连接的超时时间
     #[serde(with = "duration_serde", default = "default_t0")]
     pub t0: Duration,
@@ -51,8 +59,17 @@ fn default_port() -> u16 {
 fn default_reconnect() -> Duration {
     Duration::from_secs(5)
 }
-fn default_true() -> bool {
-    true
+fn default_get_gi_interval() -> Duration {
+    Duration::from_mins(15)
+}
+fn default_get_kwh_interval() -> Duration {
+    Duration::from_hours(1)
+}
+fn default_qoi() -> u8 {
+    20
+}
+fn default_qcc() -> u8 {
+    0x45
 }
 fn default_ca() -> String {
     "ca".to_string()
@@ -60,13 +77,10 @@ fn default_ca() -> String {
 fn default_ioa() -> String {
     "ioa".to_string()
 }
-fn default_qoi() -> u8 {
-    20
-}
-fn default_k() -> u16 {
+fn default_k() -> usize {
     12
 }
-fn default_w() -> u16 {
+fn default_w() -> usize {
     8
 }
 fn default_t0() -> Duration {

@@ -6,17 +6,15 @@ pub const START: u8 = 0x68;
 /// APCI长度
 pub const HEADER: usize = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Frame {
-    I {
-        send_sn: u16,
-        recv_sn: u16,
-        apdu: Bytes,
-    },
-    S {
-        recv_sn: u16,
-    },
-    U(UType),
+// 信息帧的结构体
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct IType {
+    /// 发送序列号
+    pub ns: u16,
+    /// 接收序列号
+    pub nr: u16,
+    ///
+    pub asdu: Bytes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,30 +51,33 @@ impl UType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Frame {
+    I(IType),
+    S { nr: u16 },
+    U(UType),
+}
+
 impl Frame {
     pub fn encode(&self) -> Bytes {
         let mut b = BytesMut::new();
         match self {
-            Frame::I {
-                send_sn,
-                recv_sn,
-                apdu,
-            } => {
+            Frame::I(IType { ns, nr, asdu }) => {
                 b.put_u8(START);
-                b.put_u8((4 + apdu.len()) as u8);
-                b.put_u8((send_sn << 1) as u8);
-                b.put_u8((send_sn >> 7) as u8);
-                b.put_u8((recv_sn << 1) as u8);
-                b.put_u8((recv_sn >> 7) as u8);
-                b.put_slice(apdu);
+                b.put_u8((4 + asdu.len()) as u8);
+                b.put_u8((ns << 1) as u8);
+                b.put_u8((ns >> 7) as u8);
+                b.put_u8((nr << 1) as u8);
+                b.put_u8((nr >> 7) as u8);
+                b.put_slice(asdu);
             }
-            Frame::S { recv_sn } => {
+            Frame::S { nr } => {
                 b.put_u8(START);
                 b.put_u8(4);
                 b.put_u8(0x01);
                 b.put_u8(0x00);
-                b.put_u8((recv_sn << 1) as u8);
-                b.put_u8((recv_sn >> 7) as u8);
+                b.put_u8((nr << 1) as u8);
+                b.put_u8((nr >> 7) as u8);
             }
             Frame::U(u) => {
                 b.put_u8(START);
@@ -103,14 +104,14 @@ impl Frame {
         let (c0, c1, c2, c3) = (buf[2], buf[3], buf[4], buf[5]);
 
         let frame = if c0 & 0x01 == 0 {
-            Frame::I {
-                send_sn: ((c0 as u16) >> 1) | ((c1 as u16) << 7),
-                recv_sn: ((c2 as u16) >> 1) | ((c3 as u16) << 7),
-                apdu: Bytes::copy_from_slice(&buf[HEADER..total]),
-            }
+            Frame::I(IType {
+                ns: ((c0 as u16) >> 1) | ((c1 as u16) << 7),
+                nr: ((c2 as u16) >> 1) | ((c3 as u16) << 7),
+                asdu: Bytes::copy_from_slice(&buf[HEADER..total]),
+            })
         } else if c0 & 0x03 == 0x01 {
             Frame::S {
-                recv_sn: ((c2 as u16) >> 1) | ((c3 as u16) << 7),
+                nr: ((c2 as u16) >> 1) | ((c3 as u16) << 7),
             }
         } else {
             match UType::from_ctrl0(c0) {
