@@ -3,6 +3,7 @@ use std::time::Duration;
 use wheel_rs::serde::duration_serde;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Iec104Config {
     pub name: String,
     pub host: String,
@@ -12,8 +13,14 @@ pub struct Iec104Config {
     #[serde(with = "duration_serde", default = "default_reconnect")]
     pub reconnect_interval: Duration,
     /// 总召唤(General Interrogation)间隔
+    #[serde(default = "default_get_gi")]
+    pub get_gi: bool,
+    /// 总召唤(General Interrogation)间隔
     #[serde(with = "duration_serde", default = "default_get_gi_interval")]
     pub get_gi_interval: Duration,
+    /// 召唤电度间隔
+    #[serde(default = "default_get_kwh")]
+    pub get_kwh: bool,
     /// 召唤电度间隔
     #[serde(with = "duration_serde", default = "default_get_kwh_interval")]
     pub get_kwh_interval: Duration,
@@ -59,8 +66,14 @@ fn default_port() -> u16 {
 fn default_reconnect() -> Duration {
     Duration::from_secs(5)
 }
+fn default_get_gi() -> bool {
+    true
+}
 fn default_get_gi_interval() -> Duration {
     Duration::from_mins(15)
+}
+fn default_get_kwh() -> bool {
+    false
 }
 fn default_get_kwh_interval() -> Duration {
     Duration::from_hours(1)

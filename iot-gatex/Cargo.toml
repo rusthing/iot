@@ -42,10 +42,10 @@ iotg-hj212 = { path = "crate/iotg-hj212" }
 iotg-mqtt = { path = "crate/iotg-mqtt" }
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
-[patch.crates-io]
-wheel-rs = { path = "../../wheel-rs" }
-robotech = { path = "../../robotech-rs/robotech" }
-robotech-macros = { path = "../../robotech-rs/robotech-macros" }
+#[patch.crates-io]
+#wheel-rs = { path = "../../wheel-rs" }
+#robotech = { path = "../../robotech-rs/robotech" }
+#robotech-macros = { path = "../../robotech-rs/robotech-macros" }
 
 [package]
 name = "iot-gatex"

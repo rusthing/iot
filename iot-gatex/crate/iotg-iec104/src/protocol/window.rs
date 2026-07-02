@@ -26,6 +26,10 @@ impl Window {
         self.left == self.right
     }
 
+    pub fn current(&self) -> u16 {
+        self.right
+    }
+
     pub fn current_size(&self) -> usize {
         let left = self.left as usize;
         let right = self.right as usize;
@@ -52,12 +56,8 @@ impl SendWindow {
         }
     }
 
-    pub fn current(&self) -> u16 {
-        self.window.right
-    }
-
     pub fn confirm(&mut self, n: u16) {
-        self.window.left = (n + 1) % SEQ_MAX_SIZE;
+        self.window.left = n;
     }
 }
 
@@ -70,9 +70,6 @@ impl RecvWindow {
         Self {
             window: Window::new(max_size),
         }
-    }
-    pub fn current(&self) -> u16 {
-        self.window.left
     }
 
     /// 清空窗口

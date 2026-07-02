@@ -13,6 +13,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use hex::encode_upper;
 use iotg_core::{Batch, Driver};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::watch;
@@ -51,6 +52,7 @@ impl Driver for Iec104Driver {
             info!(device = %self.cfg.name, %addr, "connecting");
             match timeout(self.cfg.t0, TcpStream::connect(&addr)).await {
                 Ok(Ok(tcp_stream)) => {
+                    info!(device = %self.cfg.name, %addr, "connected");
                     let mut session = Session::new(self.cfg.clone(), mq_sender.clone());
                     if let Err(e) = session.start(tcp_stream).await {
                         error!(device = %self.cfg.name, "session: {:#}", e);
@@ -115,58 +117,66 @@ impl Session {
         let mut join_set = JoinSet::new();
         let (mut start_task_sender, start_task_receiver) = watch::channel(false); // 初始为 false
         // 创建定时器定时发送总召唤指令
-        let get_gi_interval = self.cfg.get_gi_interval;
-        let mut gi_ticker = interval(get_gi_interval);
-        let qoi = self.cfg.clone().qoi;
-        let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
-        let driver_name_clone = self.cfg.name.clone();
-        let mut start_task_receiver_clone = start_task_receiver.clone();
-        join_set.spawn(async move {
-            // 等待激活
-            while !*start_task_receiver_clone.borrow() {
-                if let Err(e)=start_task_receiver_clone.changed().await {
-                    error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
-                    return ;
+        if self.cfg.get_gi {
+            let get_gi_interval = self.cfg.get_gi_interval;
+            let mut gi_ticker = interval(get_gi_interval);
+            let qoi = self.cfg.clone().qoi;
+            let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
+            let driver_name_clone = self.cfg.name.clone();
+            let mut start_task_receiver_clone = start_task_receiver.clone();
+            join_set.spawn(async move {
+                // 等待激活
+                while !*start_task_receiver_clone.borrow() {
+                    if let Err(e) = start_task_receiver_clone.changed().await {
+                        error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
+                        return;
+                    }
                 }
-            }
-            // 循环发送总召唤指令
-            loop {
-                gi_ticker.tick().await;
-                let asdu = gi_cmd(qoi);
-                if let Err(e) = i_frame_writer_sender_clone.send(asdu).await {
-                    error!(driver = %driver_name_clone, "send i_frame general interrogation error: {:#}", e);
-                    break;
+                info!(driver = %driver_name_clone, "start execute loop get general interrogation");
+                // 循环发送总召唤指令
+                loop {
+                    gi_ticker.tick().await;
+                    let asdu = gi_cmd(qoi);
+                    info!(driver = %driver_name_clone, "send i_frame general interrogation: {}", encode_upper(&asdu));
+                    if let Err(e) = i_frame_writer_sender_clone.send(asdu).await {
+                        error!(driver = %driver_name_clone, "send i_frame general interrogation error: {:#}", e);
+                        break;
+                    }
                 }
-            }
-        });
+            });
+        }
         // 创建定时器定时发送召唤电度指令
-        let get_kwh_interval = self.cfg.get_kwh_interval;
-        let mut kwh_ticker = interval(get_kwh_interval);
-        let qcc = self.cfg.clone().qcc;
-        let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
-        let driver_name_clone = self.cfg.name.clone();
-        let mut start_task_receiver_clone = start_task_receiver.clone();
-        let kwh_delay = self.cfg.get_gi_interval / 2;
-        join_set.spawn(async move {
-            // 等待激活
-            while !*start_task_receiver_clone.borrow() {
-                if let Err(e)=start_task_receiver_clone.changed().await {
-                    error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
-                    return ;
+        if self.cfg.get_kwh {
+            let get_kwh_interval = self.cfg.get_kwh_interval;
+            let mut kwh_ticker = interval(get_kwh_interval);
+            let qcc = self.cfg.clone().qcc;
+            let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
+            let driver_name_clone = self.cfg.name.clone();
+            let mut start_task_receiver_clone = start_task_receiver.clone();
+            let kwh_delay = self.cfg.get_gi_interval / 2;
+            join_set.spawn(async move {
+                // 等待激活
+                while !*start_task_receiver_clone.borrow() {
+                    if let Err(e) = start_task_receiver_clone.changed().await {
+                        error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
+                        return;
+                    }
                 }
-            }
-            // 延迟启动
-            sleep(kwh_delay).await;
-            // 循环发送召唤电度指令
-            loop {
-                kwh_ticker.tick().await;
-                let asdu = kwh_cmd(qcc);
-                if let Err(e) = i_frame_writer_sender_clone.send(asdu).await {
-                    error!(driver = %driver_name_clone, "send i_frame kwh interrogation error: {:#}", e);
-                    break;
+                info!(driver = %driver_name_clone, "start execute loop get kwh interrogation kwh_delay={:?}", kwh_delay);
+                // 延迟启动
+                sleep(kwh_delay).await;
+                // 循环发送召唤电度指令
+                loop {
+                    kwh_ticker.tick().await;
+                    let asdu = kwh_cmd(qcc);
+                    info!(driver = %driver_name_clone, "send i_frame kwh interrogation: {}", encode_upper(&asdu));
+                    if let Err(e) = i_frame_writer_sender_clone.send(asdu).await {
+                        error!(driver = %driver_name_clone, "send i_frame kwh interrogation error: {:#}", e);
+                        break;
+                    }
                 }
-            }
-        });
+            });
+        }
 
         loop {
             tokio::select! {
@@ -181,6 +191,7 @@ impl Session {
                             // 等待U帧确认
                             is_wait_u_frame_confirm = true;
                             // 重置并激活 t1
+                            debug!(driver=%self.cfg.name, "开始 t1 计时");
                             t1_sleep.as_mut().reset(Instant::now() + self.cfg.t1);
                             t1_active = true;
                         }
@@ -195,9 +206,9 @@ impl Session {
                         && !i_frame_send_window.window.is_full() => {
                     if let Some(asdu) = msg {
                         // 设置I帧的发送序列号和期待要接收的序列号
-                        let i_type = IType{
-                            ns: i_frame_send_window.current(),
-                            nr: i_frame_recv_window.current(),
+                        let i_type = IType {
+                            ns: i_frame_send_window.window.current(),
+                            nr: i_frame_recv_window.window.current(),
                             asdu,
                         };
                         if let Err(e) = write(&mut writer, &self.cfg.name, Frame::I(i_type)).await {
@@ -205,9 +216,14 @@ impl Session {
                         }
                         // 发送窗口递增
                         i_frame_send_window.window.inc();
+                        // 己方未应答接收I帧的帧数清零
+                        i_frame_recv_window.clear();
                         // 重置 t1
+                        debug!(driver=%self.cfg.name, "开始 t1 计时");
                         t1_sleep.as_mut().reset(Instant::now() + self.cfg.t1);
                         t1_active = true;
+                        // 关闭 t2 定时器
+                        t2_active = false;
                         // 重置 t3
                         t3_sleep.as_mut().reset(Instant::now() + self.cfg.t3);
                     } else {
@@ -219,12 +235,14 @@ impl Session {
                     if msg.is_none() {
                         anyhow::bail!("receive write s_frame msg is None");
                     }
-                    let nr=i_frame_recv_window.current();
+                    let nr=i_frame_recv_window.window.current();
                     if let Err(e) = write(&mut writer, &self.cfg.name, Frame::S { nr }).await {
                         anyhow::bail!("write s_frame error: {e}");
                     }
                     // 己方未应答接收I帧的帧数清零
                     i_frame_recv_window.clear();
+                    // 关闭 t2 定时器
+                    t2_active = false;
                     // 重置 t3
                     t3_sleep.as_mut().reset(Instant::now() + self.cfg.t3);
                 }
@@ -275,7 +293,6 @@ impl Session {
                 // t2 超时（发 S 帧）
                 _ = &mut t2_sleep, if t2_active => {
                     s_frame_writer_sender.send(()).await?;
-                    t2_active = false;
                 }
                 // t3 超时（发 TESTFR act）
                 _ = &mut t3_sleep => {
@@ -298,22 +315,28 @@ impl Session {
         start_task_sender: &mut watch::Sender<bool>,
         is_wait_u_frame_confirm: &mut bool,
     ) -> anyhow::Result<()> {
-        debug!(driver = %self.cfg.name, "dispatch frame: {:?}", frame);
+        debug!(driver = %self.cfg.name, "dispatch frame: {frame}");
         match frame {
             Frame::U(UType::StartDtAct) => {
                 u_frame_writer_sender.send(UType::StartDtCon).await?;
             }
             Frame::U(UType::StartDtCon) => {
                 info!(driver = %self.cfg.name, "session created");
+                debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                *t1_active = false;
                 *is_wait_u_frame_confirm = false;
                 start_task_sender.send(true)?;
             }
             Frame::U(UType::StopDtAct) => u_frame_writer_sender.send(UType::StopDtCon).await?,
             Frame::U(UType::StopDtCon) => {
+                debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                *t1_active = false;
                 *is_wait_u_frame_confirm = false;
             }
             Frame::U(UType::TestFrAct) => u_frame_writer_sender.send(UType::TestFrCon).await?,
             Frame::U(UType::TestFrCon) => {
+                debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                *t1_active = false;
                 *is_wait_u_frame_confirm = false;
             }
             Frame::S { nr } => {
@@ -321,24 +344,34 @@ impl Session {
                 send_window.confirm(*nr);
                 // 如果发送窗口为空，取消 t1 计时
                 if send_window.window.is_empty() {
+                    debug!(driver=%self.cfg.name, "关闭 t1 计时");
                     *t1_active = false;
                 }
             } // 发送窗口确认
             Frame::I(i_type) => {
                 let ns = i_type.ns;
                 let nr = i_type.nr;
+                // 判断发送窗口是否符合预期
+                if nr != send_window.window.current() {
+                    anyhow::bail!(
+                        "I frame received nr expected {} but {}",
+                        nr,
+                        send_window.window.current()
+                    );
+                }
                 // 发送窗口确认
                 send_window.confirm(nr);
                 // 如果发送窗口为空，取消 t1 计时
                 if send_window.window.is_empty() {
+                    debug!(driver=%self.cfg.name, "关闭 t1 计时");
                     *t1_active = false;
                 }
                 // 判断接收窗口是否符合预期
-                if ns != recv_window.current() {
+                if ns != recv_window.window.current() {
                     anyhow::bail!(
-                        "I frame received ns expected {} but {} != ",
+                        "I frame received ns expected {} but {}",
                         ns,
-                        recv_window.current()
+                        recv_window.window.current()
                     );
                 }
                 // 接收窗口递增
@@ -371,168 +404,6 @@ impl Session {
     }
 }
 
-// async fn session(
-//     cfg: &Iec104Config,
-//     mut stream: TcpStream,
-//     tx: &mpsc::Sender<Batch>,
-// ) -> anyhow::Result<()> {
-//     // 禁用 Nagle 算法（Nagle's Algorithm），TCP 默认会缓存小数据包，等待累积到一定量后再一起发送
-//     stream.set_nodelay(true)?;
-//     // 分开读写半流
-//     let (read_half, write_half) = stream.into_split();
-//
-//     let mut seq = Seq::default();
-//     let mut state = State::Connecting;
-//     let mut buf = BytesMut::with_capacity(4096);
-//     let mut last_recv = Instant::now();
-//     let mut testfr_at: Option<Instant> = None;
-//
-//     write(&mut stream, Frame::U(UType::StartDtAct)).await?;
-//     info!(driver = %cfg.name, "STARTDT_ACT sent");
-//
-//     loop {
-//         let mut buffer = [0u8; 4096];
-//         tokio::select! {
-//             read_result = stream.read(&mut buffer) => {
-//                 handle_read_result(read_result).await?;
-//             },
-//         }
-//
-//         // t3 空闲检测
-//         if last_recv.elapsed() >= cfg.t3 && testfr_at.is_none() {
-//             write(&mut stream, Frame::U(UType::TestFrAct)).await?;
-//             testfr_at = Some(Instant::now());
-//         }
-//         if testfr_at.map_or(false, |t| t.elapsed() >= cfg.t1) {
-//             anyhow::bail!("TESTFR timeout");
-//         }
-//         // 接收窗口满时主动发 S 帧
-//         if seq.unacked_recv >= cfg.w {
-//             write(&mut stream, Frame::S { nr: seq.nr }).await?;
-//             seq.unacked_recv = 0;
-//         }
-//
-//         // 读
-//         let mut tmp = [0u8; 4096];
-//         match timeout(Duration::from_millis(100), stream.read(&mut tmp)).await {
-//             Ok(Ok(0)) => anyhow::bail!("remote closed"),
-//             Ok(Ok(n)) => {
-//                 buf.extend_from_slice(&tmp[..n]);
-//                 last_recv = Instant::now();
-//                 testfr_at = None;
-//             }
-//             Ok(Err(e)) => return Err(e.into()),
-//             Err(_) => {}
-//         }
-//
-//         // 解帧
-//         loop {
-//             match Frame::decode(&buf) {
-//                 Ok(Some((frame, n))) => {
-//                     let _ = buf.split_to(n);
-//                     dispatch(cfg, &frame, &mut stream, &mut seq, &mut state, tx).await?;
-//                 }
-//                 Ok(None) => break,
-//                 Err(e) => {
-//                     warn!(driver=%cfg.name, "decode: {e}");
-//                     buf.clear();
-//                     break;
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// async fn handle_read_result(read_result: Read<TcpStream>) -> anyhow::Result<()> {
-//     match read_result {
-//         Ok(0) => {
-//             warn!(driver=%cfg.name, "read 0");
-//             anyhow::bail!("read 0");
-//         }
-//         Ok(n) => {
-//             buf.extend_from_slice(&buffer[..n]);
-//             last_recv = Instant::now();
-//             testfr_at = None;
-//         }
-//         Err(e) => {
-//             warn!(driver=%cfg.name, "read: {e}");
-//             anyhow::bail!("read error: {e}");
-//         }
-//     };
-//     // 解帧
-//     loop {
-//         match Frame::decode(&buf) {
-//             Ok(Some((frame, n))) => {
-//                 let _ = buf.split_to(n);
-//                 dispatch(cfg, &frame, &mut stream, &mut seq, &mut state, tx).await?;
-//             }
-//             Ok(None) => break,
-//             Err(e) => {
-//                 warn!(driver=%cfg.name, "decode: {e}");
-//                 buf.clear();
-//                 break;
-//             }
-//         }
-//     }
-// }
-//
-// async fn dispatch(
-//     cfg: &Iec104Config,
-//     frame: &Frame,
-//     seq: &mut Seq,
-//     state: &mut State,
-// ) -> anyhow::Result<()> {
-//     match frame {
-//         Frame::U(UType::StartDtCon) => {
-//             info!(driver = %cfg.name, "session started");
-//             *state = State::Started;
-//             let apdu = asdu::gi_cmd(cfg.qoi);
-//             let sn = seq.next_ns();
-//             write(
-//                 stream,
-//                 Frame::I {
-//                     send_sn: sn,
-//                     recv_sn: seq.nr,
-//                     apdu,
-//                 },
-//             )
-//             .await?;
-//         }
-//         Frame::U(UType::TestFrAct) => write(stream, Frame::U(UType::TestFrCon)).await?,
-//         Frame::U(UType::TestFrCon) => {}
-//         Frame::S { .. } => {}
-//         Frame::I {
-//             send_sn,
-//             recv_sn: _,
-//             apdu,
-//         } => {
-//             if *state != State::Started {
-//                 return Ok(());
-//             }
-//             if *send_sn != seq.nr {
-//                 warn!(driver=%cfg.name, expected=seq.nr, got=send_sn, "seq mismatch");
-//             }
-//             seq.set_nr();
-//             seq.unacked_recv += 1;
-//
-//             let batch = asdu::parse(&cfg.name, &cfg.ca_prefix, &cfg.ioa_prefix, apdu)?;
-//             if !batch.is_empty() {
-//                 debug!(driver=%cfg.name, n=batch.len(), "-> channel");
-//                 tx.send(batch)
-//                     .await
-//                     .map_err(|_| anyhow::anyhow!("sink channel closed"))?;
-//             }
-//
-//             if seq.unacked_recv >= cfg.w {
-//                 write(stream, Frame::S { nr: seq.nr }).await?;
-//                 seq.unacked_recv = 0;
-//             }
-//         }
-//         _ => {}
-//     }
-//     Ok(())
-// }
-//
 async fn write(writer: &mut OwnedWriteHalf, driver_name: &str, frame: Frame) -> anyhow::Result<()> {
     debug!(driver=%driver_name, "writing frame: {:?}", frame);
     writer.write_all(&frame.encode()).await?;

@@ -1,4 +1,6 @@
 use bytes::{BufMut, Bytes, BytesMut};
+use hex::encode_upper;
+use std::fmt::Display;
 use std::io;
 
 /// 开始标志
@@ -17,6 +19,18 @@ pub struct IType {
     pub asdu: Bytes,
 }
 
+impl Display for IType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ns={} nr={} asdu={}",
+            self.ns,
+            self.nr,
+            encode_upper(self.asdu.clone())
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UType {
     StartDtAct,
@@ -25,6 +39,19 @@ pub enum UType {
     StopDtCon,
     TestFrAct,
     TestFrCon,
+}
+
+impl Display for UType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UType::StartDtAct => write!(f, "StartDtAct"),
+            UType::StartDtCon => write!(f, "StartDtCon"),
+            UType::StopDtAct => write!(f, "StopDtAct"),
+            UType::StopDtCon => write!(f, "StopDtCon"),
+            UType::TestFrAct => write!(f, "TestFrAct"),
+            UType::TestFrCon => write!(f, "TestFrCon"),
+        }
+    }
 }
 
 impl UType {
@@ -56,6 +83,16 @@ pub enum Frame {
     I(IType),
     S { nr: u16 },
     U(UType),
+}
+
+impl Display for Frame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Frame::I(i) => write!(f, "I({})", i),
+            Frame::S { nr } => write!(f, "S(nr={})", nr),
+            Frame::U(u) => write!(f, "U({})", u),
+        }
+    }
 }
 
 impl Frame {
@@ -97,10 +134,10 @@ impl Frame {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "bad start byte"));
         }
         let apdu_len = buf[1] as usize;
-        if buf.len() < 2 + apdu_len {
+        let total = 2 + apdu_len;
+        if buf.len() < total {
             return Ok(None);
         }
-        let total = 2 + apdu_len;
         let (c0, c1, c2, c3) = (buf[2], buf[3], buf[4], buf[5]);
 
         let frame = if c0 & 0x01 == 0 {

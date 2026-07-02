@@ -3,6 +3,7 @@ use std::time::Duration;
 use wheel_rs::serde::duration_serde;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MqttSinkConfig {
     pub host: String,
     #[serde(default = "default_port")]

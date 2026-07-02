@@ -1,7 +1,9 @@
 use bytes::Bytes;
 use chrono::{TimeZone, Utc};
+use hex::encode_upper;
 use iotg_core::model::{DataPoint, Quality, Value};
 use iotg_core::IotgError;
+use tracing::{debug, warn};
 use wheel_rs::time_utils::get_current_timestamp;
 
 /// 解析 ASDU，返回数据点列表
@@ -18,7 +20,7 @@ pub fn parse(
     let sq_num = asdu[1];
     let sq = sq_num & 0x80 != 0;
     let n = (sq_num & 0x7F) as usize;
-    // let cot   = asdu[2] & 0x3F; // 可用于过滤
+    let cot = asdu[2] & 0x3F; // 可用于过滤
     let ca_local = u16::from_le_bytes([asdu[4], asdu[5]]);
     let ca_used = ca_local;
 
@@ -28,6 +30,11 @@ pub fn parse(
 
     // 读第一个 IOA（3B），用于 SQ 顺序寻址
     let base_ioa = u32::from_le_bytes([asdu[off], asdu[off + 1], asdu[off + 2], 0]);
+
+    debug!(
+        "parse: type_id={:} sq_num={} sq={} n={} cot={} ca_local={}",
+        type_id, sq_num, sq, n, cot, ca_local
+    );
 
     for i in 0..n {
         let ioa = if sq {
@@ -48,11 +55,15 @@ pub fn parse(
 
         let tag = format!("{}{}", ioa_prefix, ioa);
 
-        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, &asdu[off..])
+        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, ioa, &asdu[off..])
         else {
             break;
         };
         off += consumed;
+
+        debug!(
+            "parse element {ca_local}:{ioa}: tag={tag} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
+        );
 
         let mut pt = DataPoint::builder()
             .driver(driver.to_string())
@@ -71,7 +82,17 @@ pub fn parse(
     Ok(out)
 }
 
-fn parse_element(type_id: u8, data: &[u8]) -> Option<(Value, Quality, usize, Option<u64>)> {
+fn parse_element(
+    type_id: u8,
+    ioa: u32,
+    data: &[u8],
+) -> Option<(Value, Quality, usize, Option<u64>)> {
+    debug!(
+        "parse_element: type_id={} ioa={} data={}",
+        type_id,
+        ioa,
+        encode_upper(data)
+    );
     match type_id {
         // M_SP_NA_1 单点 (1B)
         1 => {
@@ -197,6 +218,19 @@ fn parse_element(type_id: u8, data: &[u8]) -> Option<(Value, Quality, usize, Opt
                 None,
             ))
         }
+        // M_IT_TB_1 带时标累积量 (12B)
+        38 => {
+            if data.len() < 12 {
+                return None;
+            }
+            let raw = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+            Some((
+                Value::Int(raw as i64),
+                Quality::from_iec104_qds(data[4] & 0xF0),
+                12,
+                parse_cp56(&data[5..]),
+            ))
+        }
         // M_BO_NA_1 32位比特串 (5B)
         7 => {
             if data.len() < 5 {
@@ -213,7 +247,7 @@ fn parse_element(type_id: u8, data: &[u8]) -> Option<(Value, Quality, usize, Opt
         // M_EI_NA_1 初始化结束 (1B)
         70 | 100 | 101 | 103 => Some((Value::Bool(true), Quality::GOOD, 1, None)),
         _ => {
-            tracing::trace!("unsupported TypeID={}", type_id);
+            warn!("unsupported TypeID={}: {:?}", type_id, data);
             None
         }
     }
