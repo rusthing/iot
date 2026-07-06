@@ -1,0 +1,13 @@
+[mqtt]
+client-id = "iot-svr-00"
+host = "192.168.1.70"
+port = 1883
+username = "jktest"
+password = "jktest"
+topic = ["jkscada/+/+/+/data", "jkscada/+/+/+/online"]
+
+[influxdb2]
+url = "http://192.168.1.70:8086"
+org = "jk"
+bucket = "jkscada"
+token = "admin-token=="

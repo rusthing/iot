@@ -4,9 +4,10 @@ type             = "iec104"
 name             = "substation-a"   # 唯一实例名，出现在 topic 和日志中
 host             = "192.168.10.11"
 port             = 2404
-ca               = 1
-auto_interrogate = true
-qoi              = 20               # 20 = 全站总召唤
+get-gi           = false
+get-gi-interval  = "1m"
+get-kwh          = true
+get-kwh-interval = "30s"
 
 [mqtt]
 host = "127.0.0.1"
