@@ -3,6 +3,8 @@ use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct IotMqDto {
+    /// 驱动标识
+    pub driver: String,
     /// 设备标识
     pub device: String,
     /// 指标

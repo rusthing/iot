@@ -152,12 +152,14 @@ async fn apply_app_config(
             match serde_json::from_slice::<IotMqDto>(&payload) {
                 Ok(iot_mq_dto) => {
                     let IotMqDto {
+                        driver,
                         device,
                         metric,
                         value,
                         ts,
                     } = iot_mq_dto;
                     let point_builder = DataPoint::builder("iot")
+                        .tag("driver", driver)
                         .tag("device", device)
                         .tag("metric", metric)
                         .field("value", value.to_string())
