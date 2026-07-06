@@ -28,10 +28,10 @@ fn serialize(pt: &DataPoint) -> Vec<u8> {
         Value::Bytes(b) => json!(hex::encode(b)),
     };
     json!({
-        "driver":    pt.driver,
-        "device_id": pt.device_id,
-        "tag":       pt.tag,
-        "value":     v,
+        "driver": pt.driver,
+        "device": pt.device,
+        "metric": pt.metric,
+        "value" : v,
         "quality": {
             "good":        pt.quality.good,
             "invalid":     pt.quality.invalid,

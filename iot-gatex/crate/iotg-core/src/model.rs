@@ -12,9 +12,10 @@ pub struct DataPoint {
     /// 驱动实例名称（来自配置 name 字段）
     pub driver: String,
     /// 设备标识，各协议自定义（如 "ca1"、"unit1"、"slave3"）
-    pub device_id: String,
-    /// 数据标签，各协议自定义（如 "ioa1001"、"hr40001"、"meter_kwh"）
-    pub tag: String,
+    pub device: String,
+    /// 指标
+    pub metric: String,
+    /// 值
     pub value: Value,
     pub quality: Quality,
     /// 本地接收时间
@@ -29,7 +30,7 @@ pub struct DataPoint {
 impl DataPoint {
     /// MQTT topic：{prefix}/{driver}/{device_id}/{tag}
     pub fn mqtt_topic(&self, prefix: &str) -> String {
-        format!("{}/{}/{}/{}", prefix, self.driver, self.device_id, self.tag)
+        format!("{}/{}/{}/{}", prefix, self.driver, self.device, self.metric)
     }
 }
 
