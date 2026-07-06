@@ -49,8 +49,8 @@ fn serialize(pt: &DataPoint) -> Vec<u8> {
 /// 启动 MQTT eventloop（后台 task）+ 消费循环（当前 task）
 pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
     let qos = to_qos(cfg.qos);
-    let prefix = cfg.topic_prefix.clone();
-    let prefix_clone = prefix.clone();
+    let topic = cfg.topic.clone();
+    let topic_clone = topic.clone();
     let flush_interval = cfg.flush_interval;
 
     let mut opts = MqttOptions::new(&cfg.client_id, &cfg.host, cfg.port);
@@ -78,7 +78,6 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
                 continue;
             }
             for pt in cached.values() {
-                let topic = pt.mqtt_topic(&prefix);
                 let payload = serialize(pt);
                 if let Err(e) = client.publish(&topic, qos, false, payload).await {
                     warn!("mqtt publish {topic}: {e}");
@@ -91,13 +90,12 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
         }
     });
 
-    info!(host = %cfg.host, port = cfg.port, prefix = %prefix_clone, "mqtt sink ready");
+    info!(host = %cfg.host, port = cfg.port, prefix = %topic_clone, "mqtt sink ready");
 
     while let Some(batch) = rx.recv().await {
         let mut cached = cache.write().await;
         for pt in batch {
-            let topic = pt.mqtt_topic(&prefix_clone);
-            cached.insert(topic, pt);
+            cached.insert(topic_clone.clone(), pt);
         }
     }
 

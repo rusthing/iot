@@ -24,7 +24,7 @@ pub fn parse(
     let ca_local = u16::from_le_bytes([asdu[4], asdu[5]]);
     let ca_used = ca_local;
 
-    let device_id = format!("{}{}", ca_prefix, ca_used);
+    let device = format!("{}{}", ca_prefix, ca_used);
     let mut out = Vec::with_capacity(n);
     let mut off = 6usize;
 
@@ -53,7 +53,7 @@ pub fn parse(
             v
         };
 
-        let tag = format!("{}{}", ioa_prefix, ioa);
+        let metric = format!("{}{}", ioa_prefix, ioa);
 
         let Some((value, quality, consumed, field_ts)) = parse_element(type_id, ioa, &asdu[off..])
         else {
@@ -62,13 +62,13 @@ pub fn parse(
         off += consumed;
 
         debug!(
-            "parse element {ca_local}:{ioa}: tag={tag} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
+            "parse element {ca_local}:{ioa}: metric={metric} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
         );
 
         let mut pt = DataPoint::builder()
             .driver(driver.to_string())
-            .device_id(device_id.to_string())
-            .tag(tag)
+            .device(device.to_string())
+            .metric(metric)
             .value(value)
             .quality(quality)
             .ts(get_current_timestamp()?)

@@ -27,13 +27,6 @@ pub struct DataPoint {
     pub field_ts: Option<u64>,
 }
 
-impl DataPoint {
-    /// MQTT topic：{prefix}/{driver}/{device_id}/{tag}
-    pub fn mqtt_topic(&self, prefix: &str) -> String {
-        format!("{}/{}/{}/{}", prefix, self.driver, self.device, self.metric)
-    }
-}
-
 /// 统一值类型：覆盖所有工业协议常见类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "v")]

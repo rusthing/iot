@@ -10,9 +10,9 @@ pub struct MqttSinkConfig {
     pub port: u16,
     #[serde(default = "default_client_id")]
     pub client_id: String,
-    /// topic 前缀；完整 topic = {prefix}/{driver}/{device_id}/{tag}
-    #[serde(default = "default_prefix")]
-    pub topic_prefix: String,
+    /// 主题
+    #[serde(default = "default_topic")]
+    pub topic: String,
     /// QoS 0 / 1 / 2
     #[serde(default = "default_qos")]
     pub qos: u8,
@@ -37,7 +37,7 @@ impl Default for MqttSinkConfig {
             host: "127.0.0.1".into(),
             port: default_port(),
             client_id: default_client_id(),
-            topic_prefix: default_prefix(),
+            topic: default_topic(),
             qos: default_qos(),
             channel_capacity: default_cap(),
             username: None,
@@ -54,8 +54,8 @@ fn default_port() -> u16 {
 fn default_client_id() -> String {
     "iot-gatex".into()
 }
-fn default_prefix() -> String {
-    "gatex".into()
+fn default_topic() -> String {
+    "iot-gatex".into()
 }
 fn default_qos() -> u8 {
     1
