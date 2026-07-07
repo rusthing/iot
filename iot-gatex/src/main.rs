@@ -8,7 +8,6 @@ use iotg_iec104::Iec104Driver;
 use iotg_modbus::ModbusDriver;
 use iotg_mqtt::run as mqtt_run;
 use iotg_s7::S7Driver;
-use log::debug;
 use robotech::app::{build_app_cfg, wait_app_exit};
 use robotech::cfg::watch_cfg_file;
 use robotech::env::init_env;
@@ -17,6 +16,8 @@ use robotech::macros::{log_call, watch_cfg_file};
 use robotech::signal::SignalManager;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tracing::{debug, info};
+use wheel_rs::process::{get_current_pid, send_signal_by_instruction};
 
 #[derive(Parser, Debug, Clone)]
 // 命令行参数使用定义
@@ -72,12 +73,8 @@ async fn main() -> anyhow::Result<()> {
 
     // 监听配置文件变化
     watch_cfg_file!("app", files.clone(), {
-        let (app_config, _) =
-            build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
-        apply_app_config(app_config, None)
-            .await
-            .expect("配置无法应用");
-        debug!("重新加载配置成功");
+        info!("配置文件已更新，优雅退出");
+        quit();
     });
 
     // 应用配置
@@ -85,11 +82,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 监听系统信号与等待退出
     let signal_receiver = signal_manager.watch_signal()?;
-    Ok(wait_app_exit(signal_receiver, || async move {
-        // stop_web_service().await.expect("无法停止旧的Web服务");
-        Ok(())
-    })
-    .await?)
+    Ok(wait_app_exit(signal_receiver, || async move { Ok(()) }).await?)
 }
 
 #[log_call]
@@ -110,7 +103,7 @@ async fn apply_app_config(app_config: AppConfig, old_pid: Option<u32>) -> anyhow
     drop(tx);
 
     // MQTT sink 阻塞当前 task，直到 channel 关闭
-    mqtt_run(mqtt, rx).await;
+    tokio::spawn(async move { mqtt_run(mqtt, rx).await });
 
     Ok(())
 }
@@ -123,4 +116,8 @@ fn build_driver(cfg: DriverConfig) -> anyhow::Result<Box<dyn Driver>> {
         DriverConfig::S7(c) => Box::new(S7Driver::new(c)),
         DriverConfig::Hj212(c) => Box::new(Hj212Driver::new(c)),
     })
+}
+
+fn quit() {
+    let _ = send_signal_by_instruction("quit", get_current_pid());
 }

@@ -4,7 +4,7 @@ use futures::stream;
 use influxdb2::models::DataPoint;
 use iot_svr::app::AppConfig;
 use iot_svr::dto::iot_mq_dto::IotMqDto;
-use log::debug;
+use tracing::debug;
 use robotech;
 use robotech::app::{build_app_cfg, wait_app_exit};
 use robotech::cfg::watch_cfg_file;

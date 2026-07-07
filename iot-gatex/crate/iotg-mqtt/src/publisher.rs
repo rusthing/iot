@@ -1,15 +1,12 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use rumqttc::{AsyncClient, EventLoop, MqttOptions, QoS};
+use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde_json::json;
-use tokio::sync::{mpsc, RwLock};
+use std::collections::HashMap;
+use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 
-use iotg_core::model::{Batch, DataPoint, Value};
-
 use crate::config::MqttSinkConfig;
+use iotg_core::model::{Batch, DataPoint, Value};
 
 fn to_qos(q: u8) -> QoS {
     match q {
@@ -46,7 +43,9 @@ fn serialize(pt: &DataPoint) -> Vec<u8> {
     .into_bytes()
 }
 
-/// 启动 MQTT eventloop（后台 task）+ 消费循环（当前 task）
+use tokio::select;
+
+/// 启动 MQTT eventloop + 消费循环
 pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
     let qos = to_qos(cfg.qos);
     let topic = cfg.topic.clone();
@@ -60,55 +59,56 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
         opts.set_credentials(u, p);
     }
 
-    let (client, eventloop) = AsyncClient::new(opts, cfg.channel_capacity);
+    let (client, mut eventloop) = AsyncClient::new(opts, cfg.channel_capacity);
 
-    // rumqttc eventloop 必须持续 poll 才能驱动内部发送队列
-    tokio::spawn(drive_eventloop(eventloop));
-
-    // 缓存，key = topic，用于同名覆盖
-    let cache: Arc<RwLock<HashMap<String, DataPoint>>> = Arc::new(RwLock::new(HashMap::new()));
-    let cache_clone = cache.clone();
-
-    tokio::spawn(async move {
-        let mut ticker = interval(flush_interval);
-        loop {
-            ticker.tick().await;
-            let cached = cache_clone.read().await;
-            if cached.is_empty() {
-                continue;
-            }
-            for pt in cached.values() {
-                let payload = serialize(pt);
-                if let Err(e) = client.publish(&topic, qos, false, payload).await {
-                    warn!("mqtt publish {topic}: {e}");
-                }
-            }
-            let cached_len = cached.len();
-            drop(cached);
-            cache_clone.write().await.clear();
-            debug!("mqtt sink: flushed {} points", cached_len);
-        }
-    });
+    // 缓存，key = topic
+    let mut cache: HashMap<String, DataPoint> = HashMap::new();
+    let mut ticker = interval(flush_interval);
 
     info!(host = %cfg.host, port = cfg.port, prefix = %topic_clone, "mqtt sink ready");
 
-    while let Some(batch) = rx.recv().await {
-        let mut cached = cache.write().await;
-        for pt in batch {
-            cached.insert(topic_clone.clone(), pt);
-        }
-    }
-
-    info!("mqtt sink: channel closed, exiting");
-}
-
-async fn drive_eventloop(mut ev: EventLoop) {
     loop {
-        match ev.poll().await {
-            Ok(notification) => debug!("mqtt: {:?}", notification),
-            Err(e) => {
-                error!("mqtt eventloop: {e:#}");
-                tokio::time::sleep(Duration::from_secs(2)).await;
+        select! {
+            // 1. 处理 MQTT 事件循环
+            notification = eventloop.poll() => {
+                match notification {
+                    Ok(n) => debug!("mqtt: {:?}", n),
+                    Err(e) => {
+                        error!("mqtt eventloop: {e:#}");
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+                }
+            }
+
+            // 2. 接收新数据
+            Some(batch) = rx.recv() => {
+                for pt in batch {
+                    cache.insert(topic_clone.clone(), pt);
+                }
+            }
+
+            // 3. 定时刷新缓存
+            _ = ticker.tick() => {
+                if cache.is_empty() {
+                    continue;
+                }
+
+                for pt in cache.values() {
+                    let payload = serialize(pt);
+                    if let Err(e) = client.publish(&topic, qos, false, payload).await {
+                        warn!("mqtt publish {topic}: {e}");
+                    }
+                    info!("mqtt published {topic}: {pt}");
+                }
+
+                debug!("mqtt sink: flushed {} points", cache.len());
+                cache.clear();
+            }
+
+            // 4. 所有 channel 关闭时退出
+            else => {
+                info!("mqtt sink: channel closed, exiting");
+                break;
             }
         }
     }

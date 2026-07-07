@@ -2,6 +2,7 @@ use chrono::Utc;
 use derive_setters::Setters;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::fmt::Display;
 use typed_builder::TypedBuilder;
 
 /// 所有协议共用的数据点
@@ -27,6 +28,16 @@ pub struct DataPoint {
     pub field_ts: Option<u64>,
 }
 
+impl Display for DataPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} {} {} {} {:?} {} {:?}",
+            self.driver, self.device, self.metric, self.value, self.quality, self.ns, self.field_ts
+        )
+    }
+}
+
 /// 统一值类型：覆盖所有工业协议常见类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "v")]
@@ -40,6 +51,12 @@ pub enum Value {
     Text(String),
     /// 原始字节（暂不解析的自定义帧）
     Bytes(Vec<u8>),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
 }
 
 impl From<bool> for Value {
