@@ -12,6 +12,7 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 hex = { workspace = true }
+num_enum = { workspace = true }
 
 wheel-rs = { workspace = true }
 

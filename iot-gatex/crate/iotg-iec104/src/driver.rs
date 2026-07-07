@@ -352,7 +352,7 @@ impl Session {
             }
             Frame::S { nr } => {
                 info!(device=%device, "received S frame: nr={nr}");
-                // 判断是否在发送窗口内
+                // 判断nr是否在发送窗口内
                 if !i_frame_send_window.window.is_in(*nr) {
                     anyhow::bail!(
                         "I frame received nr={nr} not in {}",
@@ -370,10 +370,10 @@ impl Session {
             Frame::I(i_type) => {
                 let ns = i_type.ns;
                 let nr = i_type.nr;
-                // 判断是否在发送窗口内
+                // 判断nr是否在发送窗口内
                 if !i_frame_send_window.window.is_in(nr) {
                     anyhow::bail!(
-                        "I frame received nr={nr} not in {}",
+                        "I frame received nr={nr} is not in {}",
                         i_frame_send_window.window.bounds(),
                     );
                 }
@@ -384,11 +384,10 @@ impl Session {
                     debug!(device=%device, "关闭 t1 计时");
                     *t1_active = false;
                 }
-                // 判断接收窗口是否符合预期
+                // 判断ns是否匹配接收窗口的当前值
                 if ns != i_frame_recv_window.window.current() {
                     anyhow::bail!(
-                        "I frame received ns expected {} but {}",
-                        ns,
+                        "I frame received ns={ns} but expect {}",
                         i_frame_recv_window.window.current()
                     );
                 }

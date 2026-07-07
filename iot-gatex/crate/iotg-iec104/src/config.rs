@@ -25,12 +25,6 @@ pub struct Iec104Config {
     /// 召唤电度间隔
     #[serde(with = "duration_serde", default = "default_get_kwh_interval")]
     pub get_kwh_interval: Duration,
-    /// CA前缀
-    #[serde(default = "default_ca")]
-    pub ca_prefix: String,
-    /// IOA前缀
-    #[serde(default = "default_ioa")]
-    pub ioa_prefix: String,
     /// # 总召唤限定词，用于指定总召唤的范围和类型
     /// 默认20为全站总召唤
     #[serde(default = "default_qoi")]
@@ -84,12 +78,6 @@ fn default_qoi() -> u8 {
 }
 fn default_qcc() -> u8 {
     0x45
-}
-fn default_ca() -> String {
-    "ca".to_string()
-}
-fn default_ioa() -> String {
-    "ioa".to_string()
 }
 fn default_k() -> usize {
     12

@@ -68,5 +68,5 @@ fn default_keepalive() -> u64 {
 }
 
 fn default_flush_interval() -> Duration {
-    Duration::from_secs(30)
+    Duration::from_secs(5)
 }

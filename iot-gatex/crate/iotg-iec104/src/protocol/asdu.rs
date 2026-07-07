@@ -3,8 +3,65 @@ use chrono::{TimeZone, Utc};
 use hex::encode_upper;
 use iotg_core::model::{DataPoint, Quality, Value};
 use iotg_core::IotgError;
-use tracing::{debug, warn};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use tracing::{debug, info, warn};
 use wheel_rs::time_utils::now_ns;
+
+// 传送原因
+#[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum CotType {
+    /// 255: 不支持的类型
+    NotSupport = 255,
+    /// 0: 未定义
+    Undefined = 0,
+    /// 1: 周期、循环
+    Periodic = 1,
+    /// 2: 背景扫描
+    BackgroundScan = 2,
+    /// 3: 突发(自发)
+    Spontaneous = 3,
+    /// 4: 初始化
+    Init = 4,
+    /// 5: 请求、查询
+    Request = 5,
+    /// 6: 激活（下发遥控/设点命令）
+    Activation = 6,
+    /// 7: 激活确认（主站下发命令后子站回复确认）
+    ActivationConfirm = 7,
+    /// 8: 停止激活
+    Deactivation = 8,
+    /// 9: 停止激活确认
+    DeactivationConfirm = 9,
+    /// 10 终止激活
+    TerminationOfActivation = 10,
+    /// 20 响应站召唤
+    ResponseGi = 20,
+    /// 37 响应计数量站召唤
+    ResponseKwh = 37,
+}
+
+impl CotType {
+    /// 转中文说明
+    pub fn to_cn(&self) -> &'static str {
+        match self {
+            CotType::Undefined => "未定义",
+            CotType::Periodic => "周期循环",
+            CotType::BackgroundScan => "背景扫描",
+            CotType::Spontaneous => "突发上送",
+            CotType::Init => "初始化",
+            CotType::Request => "查询请求",
+            CotType::Activation => "激活",
+            CotType::ActivationConfirm => "激活确认",
+            CotType::Deactivation => "停止激活",
+            CotType::DeactivationConfirm => "停止激活确认",
+            CotType::TerminationOfActivation => "终止激活",
+            CotType::ResponseGi => "响应站召唤",
+            CotType::ResponseKwh => "响应计数量站召唤",
+            _ => "未支持的传送原因类型",
+        }
+    }
+}
 
 /// 解析 ASDU，返回数据点列表
 pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>, IotgError> {
@@ -14,22 +71,22 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>,
     let type_id = asdu[0];
     let sq_num = asdu[1];
     let sq = sq_num & 0x80 != 0;
-    let n = (sq_num & 0x7F) as usize;
+    let sq_num = (sq_num & 0x7F) as usize;
     let cot = asdu[2] & 0x3F; // 可用于过滤
     let ca = u16::from_le_bytes([asdu[4], asdu[5]]);
 
-    let mut out = Vec::with_capacity(n);
+    let mut out = Vec::with_capacity(sq_num);
     let mut off = 6usize;
 
     // 读第一个 IOA（3B），用于 SQ 顺序寻址
     let mut ioa = u32::from_le_bytes([asdu[off], asdu[off + 1], asdu[off + 2], 0]);
 
     debug!(
-        "parse: type_id={:} sq_num={} sq={} n={} cot={} ca={} ioa={}",
-        type_id, sq_num, sq, n, cot, ca, ioa
+        "parse asdu: ti={:} sq={} sq_num={} cot={} ca={} ioa={}",
+        type_id, sq, sq_num, cot, ca, ioa
     );
 
-    for i in 0..n {
+    for i in 0..sq_num {
         ioa = if sq {
             if i == 0 {
                 off += 3;
@@ -48,7 +105,11 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>,
 
         let metric = format!("{}-{}", ca, ioa);
 
-        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, &asdu[off..])
+        let cot_text = CotType::try_from_primitive(cot)
+            .unwrap_or(CotType::NotSupport)
+            .to_cn();
+        let Some((value, quality, consumed, field_ts)) =
+            parse_element(type_id, cot_text, &asdu[off..])
         else {
             break;
         };
@@ -75,7 +136,11 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>,
     Ok(out)
 }
 
-fn parse_element(type_id: u8, data: &[u8]) -> Option<(Value, Quality, usize, Option<u64>)> {
+fn parse_element(
+    type_id: u8,
+    cot_text: &str,
+    data: &[u8],
+) -> Option<(Value, Quality, usize, Option<u64>)> {
     debug!(
         "parse_element: type_id={} data={}",
         type_id,
@@ -233,9 +298,24 @@ fn parse_element(type_id: u8, data: &[u8]) -> Option<(Value, Quality, usize, Opt
             ))
         }
         // M_EI_NA_1 初始化结束 (1B)
-        70 | 100 | 101 | 103 => Some((Value::Bool(true), Quality::GOOD, 1, None)),
+        70 => {
+            info!("received initialization end, cot={cot_text}");
+            Some((Value::Bool(true), Quality::GOOD, 1, None))
+        }
+        100 => {
+            info!("received general interrogation, cot={cot_text}");
+            Some((Value::Bool(true), Quality::GOOD, 1, None))
+        }
+        101 => {
+            info!("received kwh interrogation, cot={cot_text}");
+            Some((Value::Bool(true), Quality::GOOD, 1, None))
+        }
+        103 => {
+            info!("received clock sync, cot={cot_text}");
+            Some((Value::Bool(true), Quality::GOOD, 1, None))
+        }
         _ => {
-            warn!("unsupported TypeID={}: {:?}", type_id, data);
+            warn!("unsupported ti={type_id}: data={data:?}");
             None
         }
     }
