@@ -83,7 +83,7 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
             // 2. 接收新数据
             Some(batch) = rx.recv() => {
                 for pt in batch {
-                    cache.insert(topic_clone.clone(), pt);
+                    cache.insert(pt.metric.clone(), pt);
                 }
             }
 
@@ -95,7 +95,7 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
                         if let Err(e) = client.publish(&topic, qos, false, payload).await {
                             warn!("mqtt publish {topic}: {e}");
                         }
-                        info!("mqtt published {topic}: {pt}");
+                        debug!("mqtt published {topic}: {pt}");
                     }
 
                     debug!("mqtt sink: flushed {} points", cache.len());

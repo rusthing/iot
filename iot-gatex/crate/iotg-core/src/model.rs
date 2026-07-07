@@ -55,7 +55,13 @@ pub enum Value {
 
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        match self {
+            Value::Bool(v) => write!(f, "{}", v),
+            Value::Int(v) => write!(f, "{}", v),
+            Value::Float(v) => write!(f, "{}", v),
+            Value::Text(v) => write!(f, "{}", v),
+            Value::Bytes(v) => write!(f, "0x{}", hex::encode(v)),
+        }
     }
 }
 
