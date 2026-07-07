@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use clap::Parser;
 use futures::stream;
 use influxdb2::models::DataPoint;
@@ -14,6 +15,7 @@ use robotech::mq::mqtt::{start_mqtt_subscriber, MqttError};
 use robotech::signal::SignalManager;
 use robotech::tsdb::influxdb2::build_influxdb2_client;
 use rumqttc::{AsyncClient, Publish};
+use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -141,12 +143,17 @@ async fn apply_app_config(
 
     // 启动InfluxDB2客户端
     let influxdb2_bucket = influxdb2_config.bucket.clone();
+    let measurement = influxdb2_config
+        .measurement
+        .clone()
+        .ok_or_else(|| anyhow!("influxdb2 measurement is not config"))?;
     let influxdb2_client = build_influxdb2_client(influxdb2_config);
 
     // 启动MQTT订阅者
     Ok(start_mqtt_subscriber(mqtt_config, move |publish| {
         let influxdb2_client = influxdb2_client.clone();
         let influxdb2_bucket_clone = influxdb2_bucket.clone();
+        let measurement = measurement.clone();
         async move {
             let Publish { payload, .. } = publish;
             match serde_json::from_slice::<IotMqDto>(&payload) {
@@ -156,14 +163,30 @@ async fn apply_app_config(
                         device,
                         metric,
                         value,
-                        ts,
+                        ns,
                     } = iot_mq_dto;
-                    let point_builder = DataPoint::builder("iot")
+                    debug!("解析出消息内容: driver={driver}, device={device}, metric={metric}, value={value}, ns={ns}");
+                    let mut point_builder = DataPoint::builder(measurement)
                         .tag("driver", driver)
                         .tag("device", device)
                         .tag("metric", metric)
-                        .field("value", value.to_string())
-                        .timestamp(ts as i64);
+                        .timestamp(ns as i64);
+                    point_builder = match value.clone() {
+                        Value::String(s) => point_builder.field("value", s),
+                        Value::Number(n) => {
+                            if let Some(i) = n.as_i64() {
+                                point_builder.field("value", i)
+                            } else if let Some(f) = n.as_f64() {
+                                point_builder.field("value", f)
+                            } else {
+                                point_builder.field("value", n.to_string())
+                            }
+                        }
+                        Value::Bool(b) => point_builder.field("value", b),
+                        Value::Null => point_builder.field("value", "null"),
+                        _ => point_builder
+                            .field("value", value.clone().to_string()),
+                    };
                     let point = match point_builder.build() {
                         Ok(point) => point,
                         Err(e) => {
@@ -171,8 +194,10 @@ async fn apply_app_config(
                         }
                     };
 
+                    debug!("写入influxdb数据库: {point:?}");
+                    let points = vec![point];
                     if let Err(e) = influxdb2_client
-                        .write(&influxdb2_bucket_clone, stream::iter([point]))
+                        .write(&influxdb2_bucket_clone, stream::iter(points))
                         .await
                     {
                         return Err(MqttError::Handle(format!("插入InfluxDB数据库失败, {e}")));

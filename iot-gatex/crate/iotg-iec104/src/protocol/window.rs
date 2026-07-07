@@ -30,6 +30,24 @@ impl Window {
         self.right
     }
 
+    /// 判断n是否在窗口内(含左右边界)
+    pub fn is_in(&self, n: u16) -> bool {
+        if self.right < self.left {
+            self.left <= n || n <= self.right
+        } else {
+            self.left <= n && n <= self.right
+        }
+    }
+
+    /// 边界范围
+    pub fn bounds(&self) -> String {
+        if self.right < self.left {
+            format!("[{},{}]", self.right, self.left)
+        } else {
+            format!("[{},{}]", self.left, self.right)
+        }
+    }
+
     pub fn current_size(&self) -> usize {
         let left = self.left as usize;
         let right = self.right as usize;

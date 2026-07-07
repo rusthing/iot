@@ -21,7 +21,7 @@ pub struct DataPoint {
     /// 本地接收时间
     /// 这里默认值为当前时间戳，懒得考虑系统时间错误的问题
     #[builder(default = Utc::now().timestamp_millis() as u64)]
-    pub ts: u64,
+    pub ns: u64,
     /// 设备携带的时标（如有）
     #[builder(default)]
     pub field_ts: Option<u64>,

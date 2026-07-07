@@ -27,6 +27,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
+const DRIVER_NAME: &str = "IEC104";
+
 pub struct Iec104Driver {
     pub cfg: Iec104Config,
 }
@@ -49,17 +51,17 @@ impl Driver for Iec104Driver {
     async fn run(self: Box<Self>, mq_sender: mpsc::Sender<Batch>) {
         let addr = format!("{}:{}", self.cfg.host, self.cfg.port);
         loop {
-            info!(device = %self.cfg.name, %addr, "connecting");
+            info!(device = %self.name(), %addr, "connecting");
             match timeout(self.cfg.t0, TcpStream::connect(&addr)).await {
                 Ok(Ok(tcp_stream)) => {
-                    info!(device = %self.cfg.name, %addr, "connected");
+                    info!(device = %self.name(), %addr, "connected");
                     let mut session = Session::new(self.cfg.clone(), mq_sender.clone());
                     if let Err(e) = session.start(tcp_stream).await {
-                        error!(device = %self.cfg.name, "session: {:#}", e);
+                        error!(device = %self.name(), "session: {:#}", e);
                     }
                 }
-                Ok(Err(e)) => warn!(device = %self.cfg.name, "connect: {e}"),
-                Err(_) => warn!(device = %self.cfg.name, "connect timeout"),
+                Ok(Err(e)) => warn!(device = %self.name(), "connect: {e}"),
+                Err(_) => warn!(device = %self.name(), "connect timeout"),
             }
             if mq_sender.is_closed() {
                 break;
@@ -80,6 +82,8 @@ impl Session {
     }
 
     async fn start(&mut self, stream: TcpStream) -> anyhow::Result<()> {
+        let device = self.cfg.name.clone();
+
         // 禁用 Nagle 算法（Nagle's Algorithm），TCP 默认会缓存小数据包，等待累积到一定量后再一起发送
         stream.set_nodelay(true)?;
         // 分开读写半流
@@ -122,24 +126,24 @@ impl Session {
             let mut gi_ticker = interval(get_gi_interval);
             let qoi = self.cfg.clone().qoi;
             let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
-            let driver_name_clone = self.cfg.name.clone();
+            let device_clone = device.clone();
             let mut start_task_receiver_clone = start_task_receiver.clone();
             join_set.spawn(async move {
                 // 等待激活
                 while !*start_task_receiver_clone.borrow() {
                     if let Err(e) = start_task_receiver_clone.changed().await {
-                        error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
+                        error!(device = %device_clone, "start_task_receiver changed error: {:#}", e);
                         return;
                     }
                 }
-                info!(driver = %driver_name_clone, "start execute loop get general interrogation");
+                info!(device = %device_clone, "start execute loop get general interrogation");
                 // 循环发送总召唤指令
                 loop {
                     gi_ticker.tick().await;
                     let asdu = gi_cmd(qoi);
-                    info!(driver = %driver_name_clone, "send i_frame general interrogation: {}", encode_upper(&asdu));
+                    info!(device = %device_clone, "send i_frame general interrogation: {}", encode_upper(&asdu));
                     if let Err(e) = i_frame_writer_sender_clone.send(asdu).await {
-                        error!(driver = %driver_name_clone, "send i_frame general interrogation error: {:#}", e);
+                        error!(device = %device_clone, "send i_frame general interrogation error: {:#}", e);
                         break;
                     }
                 }
@@ -151,27 +155,27 @@ impl Session {
             let mut kwh_ticker = interval(get_kwh_interval);
             let qcc = self.cfg.clone().qcc;
             let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
-            let driver_name_clone = self.cfg.name.clone();
+            let device_clone = device.clone();
             let mut start_task_receiver_clone = start_task_receiver.clone();
             let kwh_delay = self.cfg.get_gi_interval / 2;
             join_set.spawn(async move {
                 // 等待激活
                 while !*start_task_receiver_clone.borrow() {
                     if let Err(e) = start_task_receiver_clone.changed().await {
-                        error!(driver = %driver_name_clone, "start_task_receiver changed error: {:#}", e);
+                        error!(device = %device_clone, "start_task_receiver changed error: {:#}", e);
                         return;
                     }
                 }
-                info!(driver = %driver_name_clone, "start execute loop get kwh interrogation kwh_delay={:?}", kwh_delay);
+                info!(device = %device_clone, "start execute loop get kwh interrogation kwh_delay={:?}", kwh_delay);
                 // 延迟启动
                 sleep(kwh_delay).await;
                 // 循环发送召唤电度指令
                 loop {
                     kwh_ticker.tick().await;
                     let asdu = kwh_cmd(qcc);
-                    info!(driver = %driver_name_clone, "send i_frame kwh interrogation: {}", encode_upper(&asdu));
+                    info!(device = %device_clone, "send i_frame kwh interrogation: {}", encode_upper(&asdu));
                     if let Err(e) = i_frame_writer_sender_clone.send(asdu).await {
-                        error!(driver = %driver_name_clone, "send i_frame kwh interrogation error: {:#}", e);
+                        error!(device = %device_clone, "send i_frame kwh interrogation error: {:#}", e);
                         break;
                     }
                 }
@@ -183,7 +187,7 @@ impl Session {
                 // 读取要写的U帧
                 msg = u_frame_writer_receiver.recv(), if is_wait_u_frame_confirm == false => {
                     if let Some(utype) = msg {
-                        if let Err(e) = write(&mut writer, &self.cfg.name, Frame::U(utype)).await {
+                        if let Err(e) = write(&mut writer, &device, Frame::U(utype)).await {
                             anyhow::bail!("write u_frame error: {e}");
                         }
                         // 如果是U帧指令
@@ -191,7 +195,7 @@ impl Session {
                             // 等待U帧确认
                             is_wait_u_frame_confirm = true;
                             // 重置并激活 t1
-                            debug!(driver=%self.cfg.name, "开始 t1 计时");
+                            debug!(device=%device, "开始 t1 计时");
                             t1_sleep.as_mut().reset(Instant::now() + self.cfg.t1);
                             t1_active = true;
                         }
@@ -219,7 +223,7 @@ impl Session {
                         // 己方未应答接收I帧的帧数清零
                         i_frame_recv_window.clear();
                         // 重置 t1
-                        debug!(driver=%self.cfg.name, "开始 t1 计时");
+                        debug!(device=%device, "开始 t1 计时");
                         t1_sleep.as_mut().reset(Instant::now() + self.cfg.t1);
                         t1_active = true;
                         // 关闭 t2 定时器
@@ -250,14 +254,14 @@ impl Session {
                 n = reader.read(&mut buffer) => {
                     match n {
                         Ok(0) => {
-                            warn!(driver=%self.cfg.name, "read 0");
+                            warn!(device=%device, "read 0");
                             anyhow::bail!("read 0");
                         }
                         Ok(n) => {
                             bytes.extend_from_slice(&buffer[..n]);
                         }
                         Err(e) => {
-                            warn!(driver=%self.cfg.name, "read: {e}");
+                            warn!(device=%device, "read: {e}");
                             anyhow::bail!("read error: {e}");
                         }
                     }
@@ -305,8 +309,8 @@ impl Session {
     async fn dispatch(
         &self,
         frame: &Frame,
-        send_window: &mut SendWindow,
-        recv_window: &mut RecvWindow,
+        i_frame_send_window: &mut SendWindow,
+        i_frame_recv_window: &mut RecvWindow,
         u_frame_writer_sender: &mpsc::Sender<UType>,
         s_frame_writer_sender: &mpsc::Sender<()>,
         t1_active: &mut bool,
@@ -315,69 +319,83 @@ impl Session {
         start_task_sender: &mut watch::Sender<bool>,
         is_wait_u_frame_confirm: &mut bool,
     ) -> anyhow::Result<()> {
-        debug!(driver = %self.cfg.name, "dispatch frame: {frame}");
+        let device = self.cfg.name.clone();
+        debug!(device = %device, "dispatch frame: {frame}");
         match frame {
             Frame::U(UType::StartDtAct) => {
+                info!(device=%device, "received StartDtAct -> send StartDtCon");
                 u_frame_writer_sender.send(UType::StartDtCon).await?;
             }
             Frame::U(UType::StartDtCon) => {
-                info!(driver = %self.cfg.name, "session created");
-                debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                info!(device=%device, "received StartDtCon -> close t1 timer, cancel wait U frame confirm, session created");
                 *t1_active = false;
                 *is_wait_u_frame_confirm = false;
                 start_task_sender.send(true)?;
             }
-            Frame::U(UType::StopDtAct) => u_frame_writer_sender.send(UType::StopDtCon).await?,
+            Frame::U(UType::StopDtAct) => {
+                info!(device=%device, "received StopDtAct");
+                u_frame_writer_sender.send(UType::StopDtCon).await?;
+            }
             Frame::U(UType::StopDtCon) => {
-                debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                info!(device=%device, "received StopDtCon -> close t1 timer, cancel wait U frame confirm");
                 *t1_active = false;
                 *is_wait_u_frame_confirm = false;
             }
-            Frame::U(UType::TestFrAct) => u_frame_writer_sender.send(UType::TestFrCon).await?,
+            Frame::U(UType::TestFrAct) => {
+                info!(device=%device, "received TestFrAct -> send TestFrCon");
+                u_frame_writer_sender.send(UType::TestFrCon).await?;
+            }
             Frame::U(UType::TestFrCon) => {
-                debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                info!(device=%device, "received TestFrCon -> close t1 timer, cancel wait U frame confirm");
                 *t1_active = false;
                 *is_wait_u_frame_confirm = false;
             }
             Frame::S { nr } => {
+                info!(device=%device, "received S frame: nr={nr}");
+                // 判断是否在发送窗口内
+                if !i_frame_send_window.window.is_in(*nr) {
+                    anyhow::bail!(
+                        "I frame received nr={nr} not in {}",
+                        i_frame_send_window.window.bounds(),
+                    );
+                }
                 // 发送窗口确认
-                send_window.confirm(*nr);
+                i_frame_send_window.confirm(*nr);
                 // 如果发送窗口为空，取消 t1 计时
-                if send_window.window.is_empty() {
-                    debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                if i_frame_send_window.window.is_empty() {
+                    debug!(device=%device, "关闭 t1 计时");
                     *t1_active = false;
                 }
-            } // 发送窗口确认
+            }
             Frame::I(i_type) => {
                 let ns = i_type.ns;
                 let nr = i_type.nr;
-                // 判断发送窗口是否符合预期
-                if nr != send_window.window.current() {
+                // 判断是否在发送窗口内
+                if !i_frame_send_window.window.is_in(nr) {
                     anyhow::bail!(
-                        "I frame received nr expected {} but {}",
-                        nr,
-                        send_window.window.current()
+                        "I frame received nr={nr} not in {}",
+                        i_frame_send_window.window.bounds(),
                     );
                 }
                 // 发送窗口确认
-                send_window.confirm(nr);
+                i_frame_send_window.confirm(nr);
                 // 如果发送窗口为空，取消 t1 计时
-                if send_window.window.is_empty() {
-                    debug!(driver=%self.cfg.name, "关闭 t1 计时");
+                if i_frame_send_window.window.is_empty() {
+                    debug!(device=%device, "关闭 t1 计时");
                     *t1_active = false;
                 }
                 // 判断接收窗口是否符合预期
-                if ns != recv_window.window.current() {
+                if ns != i_frame_recv_window.window.current() {
                     anyhow::bail!(
                         "I frame received ns expected {} but {}",
                         ns,
-                        recv_window.window.current()
+                        i_frame_recv_window.window.current()
                     );
                 }
                 // 接收窗口递增
-                recv_window.window.inc();
+                i_frame_recv_window.window.inc();
                 // 己方未应答接收I帧的帧数超过 w，发 S 帧
-                if recv_window.window.is_full() {
+                if i_frame_recv_window.window.is_full() {
                     s_frame_writer_sender.send(()).await?;
                 } else {
                     // 否则重置 t2 计时
@@ -385,14 +403,9 @@ impl Session {
                     *t2_active = true;
                 }
 
-                let batch = asdu::parse(
-                    &self.cfg.name,
-                    &self.cfg.ca_prefix,
-                    &self.cfg.ioa_prefix,
-                    &i_type.asdu,
-                )?;
+                let batch = asdu::parse(&DRIVER_NAME, &device, &i_type.asdu)?;
                 if !batch.is_empty() {
-                    debug!(driver=%self.cfg.name, n=batch.len(), "-> channel");
+                    debug!(device=%device, n=batch.len(), "-> channel");
                     self.mq_tx
                         .send(batch)
                         .await
@@ -404,8 +417,8 @@ impl Session {
     }
 }
 
-async fn write(writer: &mut OwnedWriteHalf, driver_name: &str, frame: Frame) -> anyhow::Result<()> {
-    debug!(driver=%driver_name, "writing frame: {:?}", frame);
+async fn write(writer: &mut OwnedWriteHalf, device: &str, frame: Frame) -> anyhow::Result<()> {
+    debug!(device=%device, "writing frame: {:?}", frame);
     writer.write_all(&frame.encode()).await?;
     Ok(())
 }

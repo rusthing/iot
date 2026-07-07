@@ -11,6 +11,6 @@ pub struct IotMqDto {
     pub metric: String,
     /// 值
     pub value: Value,
-    /// 创建时间戳
-    pub ts: u64,
+    /// 创建时间戳(纳秒)
+    pub ns: u64,
 }

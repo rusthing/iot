@@ -4,15 +4,10 @@ use hex::encode_upper;
 use iotg_core::model::{DataPoint, Quality, Value};
 use iotg_core::IotgError;
 use tracing::{debug, warn};
-use wheel_rs::time_utils::get_current_timestamp;
+use wheel_rs::time_utils::now_ns;
 
 /// 解析 ASDU，返回数据点列表
-pub fn parse(
-    driver: &str,
-    ca_prefix: &str,
-    ioa_prefix: &str,
-    asdu: &Bytes,
-) -> Result<Vec<DataPoint>, IotgError> {
+pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>, IotgError> {
     if asdu.len() < 9 {
         return Err(IotgError::Parse("asdu too short".to_string()));
     }
@@ -21,28 +16,26 @@ pub fn parse(
     let sq = sq_num & 0x80 != 0;
     let n = (sq_num & 0x7F) as usize;
     let cot = asdu[2] & 0x3F; // 可用于过滤
-    let ca_local = u16::from_le_bytes([asdu[4], asdu[5]]);
-    let ca_used = ca_local;
+    let ca = u16::from_le_bytes([asdu[4], asdu[5]]);
 
-    let device = format!("{}{}", ca_prefix, ca_used);
     let mut out = Vec::with_capacity(n);
     let mut off = 6usize;
 
     // 读第一个 IOA（3B），用于 SQ 顺序寻址
-    let base_ioa = u32::from_le_bytes([asdu[off], asdu[off + 1], asdu[off + 2], 0]);
+    let mut ioa = u32::from_le_bytes([asdu[off], asdu[off + 1], asdu[off + 2], 0]);
 
     debug!(
-        "parse: type_id={:} sq_num={} sq={} n={} cot={} ca_local={}",
-        type_id, sq_num, sq, n, cot, ca_local
+        "parse: type_id={:} sq_num={} sq={} n={} cot={} ca={} ioa={}",
+        type_id, sq_num, sq, n, cot, ca, ioa
     );
 
     for i in 0..n {
-        let ioa = if sq {
+        ioa = if sq {
             if i == 0 {
                 off += 3;
-                base_ioa
+                ioa
             } else {
-                base_ioa + i as u32
+                ioa + i as u32
             }
         } else {
             if off + 3 > asdu.len() {
@@ -53,16 +46,16 @@ pub fn parse(
             v
         };
 
-        let metric = format!("{}{}", ioa_prefix, ioa);
+        let metric = format!("{}-{}", ca, ioa);
 
-        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, ioa, &asdu[off..])
+        let Some((value, quality, consumed, field_ts)) = parse_element(type_id, &asdu[off..])
         else {
             break;
         };
         off += consumed;
 
         debug!(
-            "parse element {ca_local}:{ioa}: metric={metric} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
+            "parse element: metric={metric} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
         );
 
         let mut pt = DataPoint::builder()
@@ -71,7 +64,7 @@ pub fn parse(
             .metric(metric)
             .value(value)
             .quality(quality)
-            .ts(get_current_timestamp()?)
+            .ns(now_ns()?)
             .field_ts(field_ts)
             .build();
         if let Some(ts) = field_ts {
@@ -82,15 +75,10 @@ pub fn parse(
     Ok(out)
 }
 
-fn parse_element(
-    type_id: u8,
-    ioa: u32,
-    data: &[u8],
-) -> Option<(Value, Quality, usize, Option<u64>)> {
+fn parse_element(type_id: u8, data: &[u8]) -> Option<(Value, Quality, usize, Option<u64>)> {
     debug!(
-        "parse_element: type_id={} ioa={} data={}",
+        "parse_element: type_id={} data={}",
         type_id,
-        ioa,
         encode_upper(data)
     );
     match type_id {

@@ -1,6 +1,6 @@
 [package]
 name = "iot-svr"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
@@ -24,7 +24,7 @@ rumqttc = "0.25.1"
 influxdb2 = "0.5.2"
 
 
-robotech = { version = "1.7.0", features = ["app", "mqtt", "influxdb2", "macros"] }
+robotech = { version = "1.7.3", features = ["app", "mqtt", "influxdb2", "macros"] }
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
 [patch.crates-io]

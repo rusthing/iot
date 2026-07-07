@@ -5,6 +5,7 @@ use wheel_rs::serde::duration_serde;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Iec104Config {
+    /// 采集设备名称
     pub name: String,
     pub host: String,
     #[serde(default = "default_port")]

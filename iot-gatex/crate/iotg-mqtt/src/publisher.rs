@@ -39,7 +39,7 @@ fn serialize(pt: &DataPoint) -> Vec<u8> {
             "substituted": pt.quality.substituted,
             "overflow":    pt.quality.overflow,
         },
-        "ts":       pt.ts,
+        "ns":       pt.ns,
         "field_ts": pt.field_ts.map(|t| t),
     })
     .to_string()
