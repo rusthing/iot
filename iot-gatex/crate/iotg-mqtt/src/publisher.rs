@@ -2,7 +2,7 @@ use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde_json::json;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
+use tokio::time::{sleep_until, Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 use crate::config::MqttSinkConfig;
@@ -63,7 +63,7 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
 
     // 缓存，key = topic
     let mut cache: HashMap<String, DataPoint> = HashMap::new();
-    let mut ticker = interval(flush_interval);
+    let mut next_flush = Instant::now() + flush_interval;
 
     info!(host = %cfg.host, port = cfg.port, prefix = %topic_clone, "mqtt sink ready");
 
@@ -72,7 +72,7 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
             // 1. 处理 MQTT 事件循环
             notification = eventloop.poll() => {
                 match notification {
-                    Ok(n) => debug!("mqtt: {:?}", n),
+                    Ok(n) => debug!("mqtt poll: {:?}", n),
                     Err(e) => {
                         error!("mqtt eventloop: {e:#}");
                         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -88,27 +88,21 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
             }
 
             // 3. 定时刷新缓存
-            _ = ticker.tick() => {
-                if cache.is_empty() {
-                    continue;
-                }
-
-                for pt in cache.values() {
-                    let payload = serialize(pt);
-                    if let Err(e) = client.publish(&topic, qos, false, payload).await {
-                        warn!("mqtt publish {topic}: {e}");
+            _ = sleep_until(next_flush) => {
+                if !cache.is_empty() {
+                    for pt in cache.values() {
+                        let payload = serialize(pt);
+                        if let Err(e) = client.publish(&topic, qos, false, payload).await {
+                            warn!("mqtt publish {topic}: {e}");
+                        }
+                        info!("mqtt published {topic}: {pt}");
                     }
-                    info!("mqtt published {topic}: {pt}");
+
+                    debug!("mqtt sink: flushed {} points", cache.len());
+                    cache.clear();
                 }
-
-                debug!("mqtt sink: flushed {} points", cache.len());
-                cache.clear();
-            }
-
-            // 4. 所有 channel 关闭时退出
-            else => {
-                info!("mqtt sink: channel closed, exiting");
-                break;
+                // 更新下次刷新时间
+                next_flush = Instant::now() + flush_interval;
             }
         }
     }
