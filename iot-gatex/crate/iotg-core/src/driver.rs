@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::model::Batch;
+use crate::iotg_dto::Batch;
 
 /// 所有采集驱动实现此 trait。
 ///

@@ -30,6 +30,7 @@ hex = "0.4.3"
 rumqttc = "0.25.1"
 num_enum = "0.7.6"
 notify-debouncer-mini = "0.7.0"
+strum = "0.28.0"
 
 wheel-rs = "1.8.1"
 robotech = "1.7.5"

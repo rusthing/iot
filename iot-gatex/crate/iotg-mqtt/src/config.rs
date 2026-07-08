@@ -4,7 +4,7 @@ use wheel_rs::serde::duration_serde;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct MqttSinkConfig {
+pub struct MqttConfig {
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
@@ -31,7 +31,7 @@ pub struct MqttSinkConfig {
     pub flush_interval: Duration,
 }
 
-impl Default for MqttSinkConfig {
+impl Default for MqttConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),

@@ -1,10 +1,8 @@
-use anyhow::anyhow;
 use clap::Parser;
 use futures::stream;
 use influxdb2::models::DataPoint;
 use iot_svr::app::AppConfig;
-use iot_svr::dto::iot_mq_dto::IotMqDto;
-use tracing::debug;
+use iot_svr::dto::iot_mq_dto::{IotMqDto, Value};
 use robotech;
 use robotech::app::{build_app_cfg, wait_app_exit};
 use robotech::cfg::watch_cfg_file;
@@ -15,11 +13,11 @@ use robotech::mq::mqtt::{start_mqtt_subscriber, MqttError};
 use robotech::signal::SignalManager;
 use robotech::tsdb::influxdb2::build_influxdb2_client;
 use rumqttc::{AsyncClient, Publish};
-use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use tracing::debug;
 
 // 命令行参数使用定义
 // version: 命令行添加 -V/--version参数可以查看版本信息
@@ -143,17 +141,12 @@ async fn apply_app_config(
 
     // 启动InfluxDB2客户端
     let influxdb2_bucket = influxdb2_config.bucket.clone();
-    let measurement = influxdb2_config
-        .measurement
-        .clone()
-        .ok_or_else(|| anyhow!("influxdb2 measurement is not config"))?;
     let influxdb2_client = build_influxdb2_client(influxdb2_config);
 
     // 启动MQTT订阅者
     Ok(start_mqtt_subscriber(mqtt_config, move |publish| {
         let influxdb2_client = influxdb2_client.clone();
         let influxdb2_bucket_clone = influxdb2_bucket.clone();
-        let measurement = measurement.clone();
         async move {
             let Publish { payload, .. } = publish;
             match serde_json::from_slice::<IotMqDto>(&payload) {
@@ -164,28 +157,28 @@ async fn apply_app_config(
                         metric,
                         value,
                         ns,
+                        field_ts,
+                        quality: _,
                     } = iot_mq_dto;
+                    let measurement = match value {
+                        Value::Bool(_) => "POINT-BOOL",
+                        Value::U8(_) | Value::U32(_) | Value::I16(_) | Value::I32(_) => "POINT-I64",
+                        Value::F32(_) => "POINT-F64",
+                    };
+                    let ns = if let Some(field_ts) = field_ts { field_ts * 1_000_000 } else { ns };
                     debug!("解析出消息内容: driver={driver}, device={device}, metric={metric}, value={value}, ns={ns}");
                     let mut point_builder = DataPoint::builder(measurement)
                         .tag("driver", driver)
                         .tag("device", device)
                         .tag("metric", metric)
                         .timestamp(ns as i64);
-                    point_builder = match value.clone() {
-                        Value::String(s) => point_builder.field("value", s),
-                        Value::Number(n) => {
-                            if let Some(i) = n.as_i64() {
-                                point_builder.field("value", i)
-                            } else if let Some(f) = n.as_f64() {
-                                point_builder.field("value", f)
-                            } else {
-                                point_builder.field("value", n.to_string())
-                            }
-                        }
+                    point_builder = match value {
                         Value::Bool(b) => point_builder.field("value", b),
-                        Value::Null => point_builder.field("value", "null"),
-                        _ => point_builder
-                            .field("value", value.clone().to_string()),
+                        Value::U8(u) => point_builder.field("value", u as i64),
+                        Value::U32(u) => point_builder.field("value", u as i64),
+                        Value::I16(u) => point_builder.field("value", u as i64),
+                        Value::I32(u) => point_builder.field("value", u as i64),
+                        Value::F32(u) => point_builder.field("value", u as f64),
                     };
                     let point = match point_builder.build() {
                         Ok(point) => point,
@@ -211,5 +204,5 @@ async fn apply_app_config(
             }
         }
     })
-    .await?)
+        .await?)
 }

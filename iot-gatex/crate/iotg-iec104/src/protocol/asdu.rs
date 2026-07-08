@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use chrono::{TimeZone, Utc};
 use hex::encode_upper;
-use iotg_core::model::{DataPoint, Quality, Value};
+use iotg_core::iotg_dto::{IotMqDto, Quality, Value};
 use iotg_core::IotgError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use tracing::{debug, info, warn};
@@ -42,8 +42,8 @@ pub enum CotType {
 }
 
 impl CotType {
-    /// 转中文说明
-    pub fn to_cn(&self) -> &'static str {
+    /// 转换为文本说明
+    pub fn to_text(&self) -> &'static str {
         match self {
             CotType::Undefined => "未定义",
             CotType::Periodic => "周期循环",
@@ -64,7 +64,7 @@ impl CotType {
 }
 
 /// 解析 ASDU，返回数据点列表
-pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>, IotgError> {
+pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<IotMqDto>, IotgError> {
     if asdu.len() < 9 {
         return Err(IotgError::Parse("asdu too short".to_string()));
     }
@@ -107,7 +107,7 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>,
 
         let cot_text = CotType::try_from_primitive(cot)
             .unwrap_or(CotType::NotSupport)
-            .to_cn();
+            .to_text();
         let Some((value, quality, consumed, field_ts)) =
             parse_element(type_id, cot_text, &asdu[off..])
         else {
@@ -119,7 +119,7 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<DataPoint>,
             "parse element: metric={metric} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
         );
 
-        let mut pt = DataPoint::builder()
+        let mut pt = IotMqDto::builder()
             .driver(driver.to_string())
             .device(device.to_string())
             .metric(metric)
@@ -173,12 +173,7 @@ fn parse_element(
         // M_DP_NA_1 双点 (1B)
         3 => {
             let b = *data.first()?;
-            Some((
-                Value::Int((b & 0x03) as i64),
-                Quality::from_iec104_qds(b),
-                1,
-                None,
-            ))
+            Some((Value::U8(b & 0x03), Quality::from_iec104_qds(b), 1, None))
         }
         // M_DP_TB_1 带时标双点 (8B)
         31 => {
@@ -187,7 +182,7 @@ fn parse_element(
             }
             let b = data[0];
             Some((
-                Value::Int((b & 0x03) as i64),
+                Value::U8(b & 0x03),
                 Quality::from_iec104_qds(b),
                 8,
                 parse_cp56(&data[1..]),
@@ -198,13 +193,8 @@ fn parse_element(
             if data.len() < 3 {
                 return None;
             }
-            let raw = i16::from_le_bytes([data[0], data[1]]) as f64 / 32767.0;
-            Some((
-                Value::Float(raw),
-                Quality::from_iec104_qds(data[2]),
-                3,
-                None,
-            ))
+            let raw = i16::from_le_bytes([data[0], data[1]]);
+            Some((Value::I16(raw), Quality::from_iec104_qds(data[2]), 3, None))
         }
         // M_ME_NB_1 标度化 (3B)
         11 => {
@@ -212,12 +202,7 @@ fn parse_element(
                 return None;
             }
             let raw = i16::from_le_bytes([data[0], data[1]]);
-            Some((
-                Value::Int(raw as i64),
-                Quality::from_iec104_qds(data[2]),
-                3,
-                None,
-            ))
+            Some((Value::I16(raw), Quality::from_iec104_qds(data[2]), 3, None))
         }
         // M_ME_NC_1 短浮点 (5B)
         13 => {
@@ -225,21 +210,16 @@ fn parse_element(
                 return None;
             }
             let raw = f32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-            Some((
-                Value::Float(raw as f64),
-                Quality::from_iec104_qds(data[4]),
-                5,
-                None,
-            ))
+            Some((Value::F32(raw), Quality::from_iec104_qds(data[4]), 5, None))
         }
         // M_ME_TD_1 带时标归一化 (10B)
         34 => {
             if data.len() < 10 {
                 return None;
             }
-            let raw = i16::from_le_bytes([data[0], data[1]]) as f64 / 32767.0;
+            let raw = i16::from_le_bytes([data[0], data[1]]);
             Some((
-                Value::Float(raw),
+                Value::I16(raw),
                 Quality::from_iec104_qds(data[2]),
                 10,
                 parse_cp56(&data[3..]),
@@ -252,7 +232,7 @@ fn parse_element(
             }
             let raw = f32::from_le_bytes([data[0], data[1], data[2], data[3]]);
             Some((
-                Value::Float(raw as f64),
+                Value::F32(raw),
                 Quality::from_iec104_qds(data[4]),
                 12,
                 parse_cp56(&data[5..]),
@@ -265,7 +245,7 @@ fn parse_element(
             }
             let raw = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
             Some((
-                Value::Int(raw as i64),
+                Value::I32(raw),
                 Quality::from_iec104_qds(data[4] & 0xF0),
                 5,
                 None,
@@ -278,7 +258,7 @@ fn parse_element(
             }
             let raw = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
             Some((
-                Value::Int(raw as i64),
+                Value::I32(raw),
                 Quality::from_iec104_qds(data[4] & 0xF0),
                 12,
                 parse_cp56(&data[5..]),
@@ -290,29 +270,27 @@ fn parse_element(
                 return None;
             }
             let raw = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-            Some((
-                Value::Int(raw as i64),
-                Quality::from_iec104_qds(data[4]),
-                5,
-                None,
-            ))
+            Some((Value::U32(raw), Quality::from_iec104_qds(data[4]), 5, None))
         }
         // M_EI_NA_1 初始化结束 (1B)
         70 => {
             info!("received initialization end, cot={cot_text}");
-            Some((Value::Bool(true), Quality::GOOD, 1, None))
+            None
         }
+        // M_IC_NA_1 总召唤 (1B)
         100 => {
             info!("received general interrogation, cot={cot_text}");
-            Some((Value::Bool(true), Quality::GOOD, 1, None))
+            None
         }
+        // M_CI_NA_1 电度召唤 (1B)
         101 => {
             info!("received kwh interrogation, cot={cot_text}");
-            Some((Value::Bool(true), Quality::GOOD, 1, None))
+            None
         }
+        // M_CS_NA_1 时钟同步 (1B)
         103 => {
             info!("received clock sync, cot={cot_text}");
-            Some((Value::Bool(true), Quality::GOOD, 1, None))
+            None
         }
         _ => {
             warn!("unsupported ti={type_id}: data={data:?}");

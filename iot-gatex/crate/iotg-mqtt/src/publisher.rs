@@ -1,12 +1,11 @@
+use crate::config::MqttConfig;
+use iotg_core::iotg_dto::{Batch, IotMqDto};
 use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde_json::json;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::time::{sleep_until, Duration, Instant};
 use tracing::{debug, error, info, warn};
-
-use crate::config::MqttSinkConfig;
-use iotg_core::model::{Batch, DataPoint, Value};
 
 fn to_qos(q: u8) -> QoS {
     match q {
@@ -16,37 +15,37 @@ fn to_qos(q: u8) -> QoS {
     }
 }
 
-fn serialize(pt: &DataPoint) -> Vec<u8> {
-    let v = match &pt.value {
-        Value::Bool(b) => json!(b),
-        Value::Int(i) => json!(i),
-        Value::Float(f) => json!(f),
-        Value::Text(s) => json!(s),
-        Value::Bytes(b) => json!(hex::encode(b)),
-    };
-    json!({
-        "driver": pt.driver,
-        "device": pt.device,
-        "metric": pt.metric,
-        "value" : v,
-        "quality": {
-            "good":        pt.quality.good,
-            "invalid":     pt.quality.invalid,
-            "not_topical": pt.quality.not_topical,
-            "substituted": pt.quality.substituted,
-            "overflow":    pt.quality.overflow,
-        },
-        "ns":       pt.ns,
-        "field_ts": pt.field_ts.map(|t| t),
-    })
-    .to_string()
-    .into_bytes()
-}
+// fn serialize(pt: &DataPoint) -> Vec<u8> {
+//     let value = match &pt.value {
+//         Value::Bool(b) => json!(b),
+//         Value::U8(u) => json!(u),
+//         Value::U32(u) => json!(u),
+//         Value::I16(i) => json!(i),
+//         Value::I32(i) => json!(i),
+//         Value::F32(f) => json!(f),
+//     };
+//     json!({
+//         "driver": pt.driver,
+//         "device": pt.device,
+//         "metric": pt.metric,
+//         "value" : pt.value,
+//         "quality": {
+//             "good":        pt.quality.good,
+//             "invalid":     pt.quality.invalid,
+//             "notTopical": pt.quality.not_topical,
+//             "substituted": pt.quality.substituted,
+//             "overflow":    pt.quality.overflow,
+//         },
+//         "ns":       pt.ns,
+//         "fieldTs": pt.field_ts.map(|t| t),
+//     })
+//     json!(pt).to_string().into_bytes()
+// }
 
 use tokio::select;
 
 /// 启动 MQTT eventloop + 消费循环
-pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
+pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
     let qos = to_qos(cfg.qos);
     let topic = cfg.topic.clone();
     let topic_clone = topic.clone();
@@ -62,10 +61,10 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
     let (client, mut eventloop) = AsyncClient::new(opts, cfg.channel_capacity);
 
     // 缓存，key = topic
-    let mut cache: HashMap<String, DataPoint> = HashMap::new();
+    let mut cache: HashMap<String, IotMqDto> = HashMap::new();
     let mut next_flush = Instant::now() + flush_interval;
 
-    info!(host = %cfg.host, port = cfg.port, prefix = %topic_clone, "mqtt sink ready");
+    info!(host = %cfg.host, port = cfg.port, prefix = %topic_clone, "mqtt ready");
 
     loop {
         select! {
@@ -90,15 +89,17 @@ pub async fn run(cfg: MqttSinkConfig, mut rx: mpsc::Receiver<Batch>) {
             // 3. 定时刷新缓存
             _ = sleep_until(next_flush) => {
                 if !cache.is_empty() {
+                    debug!("mqtt will publish {} points", cache.len());
                     for pt in cache.values() {
-                        let payload = serialize(pt);
+                        let json = json!(pt).to_string();
+                        let payload = json.as_bytes();
                         if let Err(e) = client.publish(&topic, qos, false, payload).await {
                             warn!("mqtt publish {topic}: {e}");
                         }
                         debug!("mqtt published {topic}: {pt}");
                     }
 
-                    debug!("mqtt sink: flushed {} points", cache.len());
+                    debug!("mqtt flushed {} points", cache.len());
                     cache.clear();
                 }
                 // 更新下次刷新时间

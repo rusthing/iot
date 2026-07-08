@@ -16,5 +16,6 @@ serde_with = { workspace = true }
 derive_setters = { workspace = true }
 typed-builder = { workspace = true }
 hex = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
 
 wheel-rs = { workspace = true }

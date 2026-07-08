@@ -2,7 +2,7 @@ use iotg_dlt645::Dlt645Config;
 use iotg_hj212::Hj212Config;
 use iotg_iec104::Iec104Config;
 use iotg_modbus::ModbusConfig;
-use iotg_mqtt::MqttSinkConfig;
+use iotg_mqtt::MqttConfig;
 use iotg_s7::S7Config;
 use robotech::app::AppError;
 use serde::Deserialize;
@@ -28,7 +28,7 @@ pub fn set_app_config(value: AppConfig) -> Result<(), AppError> {
 #[serde(rename_all = "kebab-case")]
 pub struct AppConfig {
     #[serde(default)]
-    pub mqtt: MqttSinkConfig,
+    pub mqtt: MqttConfig,
     #[serde(default)]
     pub drivers: Vec<DriverConfig>,
 }
