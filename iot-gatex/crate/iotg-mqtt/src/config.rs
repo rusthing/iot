@@ -58,7 +58,7 @@ fn default_topic() -> String {
     "iot-gatex".into()
 }
 fn default_qos() -> u8 {
-    1
+    0
 }
 fn default_cap() -> usize {
     1024

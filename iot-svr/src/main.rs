@@ -1,6 +1,5 @@
 use clap::Parser;
-use futures::stream;
-use influxdb::{Query, Timestamp, ValidQuery, WriteQuery};
+use influxdb::{Timestamp, WriteQuery};
 use iot_svr::app::iot_config::IotConfig;
 use iot_svr::app::AppConfig;
 use iot_svr::dto::iot_mq_dto::{IotMqDto, Value};
@@ -16,11 +15,10 @@ use robotech::tsdb::influxdb::build_influxdb_client;
 use rumqttc::{AsyncClient, Publish};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, sleep_until, Instant};
+use tokio::time::{sleep_until, Instant};
 use tracing::{debug, error};
 
 // 命令行参数使用定义
@@ -149,7 +147,6 @@ async fn apply_app_config(
     } = iot_config;
 
     // 启动InfluxDB客户端
-    let influxdb_bucket = influxdb_config.bucket.clone();
     let influxdb_client = build_influxdb_client(influxdb_config)?;
 
     // 缓存，key = metric
@@ -159,7 +156,6 @@ async fn apply_app_config(
         mpsc::channel::<(String, WriteQuery)>(channel_capacity);
 
     tokio::spawn(async move {
-        let influxdb_bucket = influxdb_bucket.clone();
         loop {
             select! {
                 // 接收 write_query channel

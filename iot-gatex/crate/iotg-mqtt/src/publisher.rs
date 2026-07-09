@@ -92,7 +92,7 @@ pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
                     debug!("mqtt cache {} points", cache.len());
                     for pt in cache.values() {
                         let json = json!(pt).to_string();
-                        debug!("mqtt will publish {json}");
+                        debug!("mqtt will publish {topic}: {json}");
                         let payload = json.as_bytes();
                         if let Err(e) = client.publish(&topic, qos, false, payload).await {
                             warn!("mqtt publish {topic}: {e}");

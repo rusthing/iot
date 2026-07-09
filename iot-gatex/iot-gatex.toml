@@ -4,15 +4,15 @@ type             = "iec104"
 name             = "substation-a"   # 唯一实例名，出现在 topic 和日志中
 host             = "localhost"
 port             = 2404
-get-gi           = false
-get-gi-interval  = "1m"
+#get-gi           = false
+#get-gi-interval  = "1m"
 get-kwh          = true
-get-kwh-interval = "30s"
+#get-kwh-interval = "30s"
 
 [mqtt]
+client-id = "iot-gatex"
 host = "lhlj-prod"
 port = 40185
-client-id = "iot-gatex"
 #username = "iot-gatex"
 #password = "iot-gatex"
 topic = "iot-gatex"
