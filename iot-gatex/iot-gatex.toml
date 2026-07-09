@@ -16,5 +16,5 @@ client-id = "iot-gatex"
 #username = "iot-gatex"
 #password = "iot-gatex"
 topic = "iot-gatex"
-qos = 1             # 0 / 1 / 2
-flush-interval = "15s"
+#qos = 1             # 0 / 1 / 2
+#flush-interval = "15s"
