@@ -1,13 +1,12 @@
 [mqtt]
 client-id = "iot-svr-00"
-host = "192.168.1.70"
-port = 1883
+host = "lhlj-prod"
+port = 40185
 #username = "jktest"
 #password = "jktest"
-topic = ["jkscada/+/+/+/data", "jkscada/+/+/+/online"]
+topic = ["iot-gatex"]
 
-[influxdb2]
+[influxdb]
 url = "http://192.168.1.70:8086"
-org = "jk"
-bucket = "jkscada"
+bucket = "iot"
 token = "admin-token=="

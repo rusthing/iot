@@ -14,7 +14,8 @@ fn main() {
     // 获取输出目录路径
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
-    // 复制应用的配置文件到输出目录
+    // 复制配置文件到输出目录
+    // 获取源配置文件路径
     let config_file_name = env!("CARGO_PKG_NAME");
     copy_config_file(&out_dir, config_file_name, "toml");
     copy_config_file(&out_dir, config_file_name, "yml");
@@ -22,7 +23,8 @@ fn main() {
     copy_config_file(&out_dir, config_file_name, "ini");
     copy_config_file(&out_dir, config_file_name, "ron");
 
-    // 复制日志的配置文件到输出目录
+    // 复制配置文件到输出目录
+    // 获取源配置文件路径
     let config_file_name = "log";
     copy_config_file(&out_dir, config_file_name, "toml");
     copy_config_file(&out_dir, config_file_name, "yml");
@@ -55,7 +57,8 @@ fn main() {
 /// - 当文件复制失败时
 fn copy_config_file(out_dir: &str, config_file_name: &str, file_ext: &str) {
     // 获取源配置文件路径
-    let config_file_name = format!("{}.{}", config_file_name, file_ext);
+    let config_file_name = format!("{config_file_name}.{file_ext}");
+
     let project_root = env!("CARGO_MANIFEST_DIR");
     let config_file_path = Path::new(project_root).join(&config_file_name);
 
@@ -72,6 +75,10 @@ fn copy_config_file(out_dir: &str, config_file_name: &str, file_ext: &str) {
         //     "cargo:warning=copy {:?} to {:?}",
         //     config_file_path, dest_path
         // );
+
+        // 告诉 Cargo 当配置文件变化时重新运行 build.rs
+        println!("cargo:rerun-if-changed={config_file_name}");
+        // 复制文件到目的地
         fs::copy(config_file_path, dest_path).expect("Failed to copy app file");
     }
 }

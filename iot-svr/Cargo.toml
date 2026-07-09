@@ -25,13 +25,14 @@ typed-builder = { version = "0.23.2" }
 derive_setters = "0.1.9"
 
 rumqttc = "0.25.1"
-influxdb2 = "0.5.2"
+influxdb = "0.8.0"
 
 
-robotech = { version = "1.7.7", features = ["app", "mqtt", "influxdb2", "macros"] }
+robotech = { version = "1.8.0", features = ["app", "mqtt", "influxdb", "macros"] }
+wheel-rs = "1.8.1"
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
-#[patch.crates-io]
-#wheel-rs = { path = "../../../rusthing/wheel-rs" }
-#robotech = { path = "../../../rusthing/robotech-rs/robotech" }
-#robotech-macros = { path = "../../../rusthing/robotech-rs/robotech-macros" }
+[patch.crates-io]
+wheel-rs = { path = "../../../rusthing/wheel-rs" }
+robotech = { path = "../../../rusthing/robotech-rs/robotech" }
+robotech-macros = { path = "../../../rusthing/robotech-rs/robotech-macros" }

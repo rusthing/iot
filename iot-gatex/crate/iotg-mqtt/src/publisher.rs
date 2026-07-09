@@ -48,7 +48,7 @@ use tokio::select;
 pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
     let qos = to_qos(cfg.qos);
     let topic = cfg.topic.clone();
-    let topic_clone = topic.clone();
+    // let topic_clone = topic.clone();
     let flush_interval = cfg.flush_interval;
 
     let mut opts = MqttOptions::new(&cfg.client_id, &cfg.host, cfg.port);
@@ -60,11 +60,11 @@ pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
 
     let (client, mut eventloop) = AsyncClient::new(opts, cfg.channel_capacity);
 
-    // 缓存，key = topic
+    // 缓存，key = metric
     let mut cache: HashMap<String, IotMqDto> = HashMap::new();
     let mut next_flush = Instant::now() + flush_interval;
 
-    info!(host = %cfg.host, port = cfg.port, prefix = %topic_clone, "mqtt ready");
+    info!(host = %cfg.host, port = cfg.port, topic = %topic, "mqtt ready");
 
     loop {
         select! {

@@ -61,7 +61,7 @@ impl Driver for Iec104Driver {
                     }
                 }
                 Ok(Err(e)) => warn!(device = %self.name(), "connect: {e}"),
-                Err(_) => warn!(device = %self.name(), "connect timeout"),
+                Err(_) => error!(device = %self.name(), "connect timeout"),
             }
             if mq_sender.is_closed() {
                 break;

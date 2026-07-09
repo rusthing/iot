@@ -1,6 +1,7 @@
 use clap::Parser;
 use futures::stream;
-use influxdb2::models::DataPoint;
+use influxdb::{Query, Timestamp, ValidQuery, WriteQuery};
+use iot_svr::app::iot_config::IotConfig;
 use iot_svr::app::AppConfig;
 use iot_svr::dto::iot_mq_dto::{IotMqDto, Value};
 use robotech;
@@ -11,13 +12,16 @@ use robotech::log::init_log;
 use robotech::macros::{log_call, watch_cfg_file};
 use robotech::mq::mqtt::{start_mqtt_subscriber, MqttError};
 use robotech::signal::SignalManager;
-use robotech::tsdb::influxdb2::build_influxdb2_client;
+use robotech::tsdb::influxdb::build_influxdb_client;
 use rumqttc::{AsyncClient, Publish};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::select;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tracing::debug;
+use tokio::time::{sleep, sleep_until, Instant};
+use tracing::{debug, error};
 
 // 命令行参数使用定义
 // version: 命令行添加 -V/--version参数可以查看版本信息
@@ -135,18 +139,62 @@ async fn apply_app_config(
 ) -> anyhow::Result<(Arc<AsyncClient>, Arc<JoinHandle<()>>)> {
     debug!("应用App配置...");
     let AppConfig {
+        iot: iot_config,
         mqtt: mqtt_config,
-        influxdb2: influxdb2_config,
+        influxdb: influxdb_config,
     } = app_config;
+    let IotConfig {
+        channel_capacity,
+        flush_interval,
+    } = iot_config;
 
-    // 启动InfluxDB2客户端
-    let influxdb2_bucket = influxdb2_config.bucket.clone();
-    let influxdb2_client = build_influxdb2_client(influxdb2_config);
+    // 启动InfluxDB客户端
+    let influxdb_bucket = influxdb_config.bucket.clone();
+    let influxdb_client = build_influxdb_client(influxdb_config)?;
+
+    // 缓存，key = metric
+    let mut write_query_cache: HashMap<String, WriteQuery> = HashMap::new();
+    let mut next_flush = Instant::now() + flush_interval;
+    let (write_query_sender, mut write_query_receiver) =
+        mpsc::channel::<(String, WriteQuery)>(channel_capacity);
+
+    tokio::spawn(async move {
+        let influxdb_bucket = influxdb_bucket.clone();
+        loop {
+            select! {
+                // 接收 write_query channel
+                Some((metric, write_query)) = write_query_receiver.recv() => {
+                    write_query_cache.insert(metric, write_query);
+                }
+                // 定时刷新缓存
+                _ = sleep_until(next_flush) => {
+                    if !write_query_cache.is_empty() {
+                        debug!("write query cache {} points", write_query_cache.len());
+                        let mut write_queries = vec![];
+                        for write_query in write_query_cache.values() {
+                            write_queries.push(write_query.clone());
+                        }
+                        debug!("写入influxdb数据库: {write_queries:?}");
+                        if let Err(e) = influxdb_client
+                            .query(write_queries)
+                            .await
+                        {
+                            error!("插入InfluxDB数据库失败, {e}");
+                        } else {
+                            debug!("write query flushed {} points", write_query_cache.len());
+                            write_query_cache.clear();
+                        }
+                    }
+                    // 更新下次刷新时间
+                    next_flush = Instant::now() + flush_interval;
+                }
+            }
+        }
+    });
 
     // 启动MQTT订阅者
     Ok(start_mqtt_subscriber(mqtt_config, move |publish| {
-        let influxdb2_client = influxdb2_client.clone();
-        let influxdb2_bucket_clone = influxdb2_bucket.clone();
+        let write_query_sender = write_query_sender.clone();
         async move {
             let Publish { payload, .. } = publish;
             match serde_json::from_slice::<IotMqDto>(&payload) {
@@ -167,35 +215,20 @@ async fn apply_app_config(
                     };
                     let ns = if let Some(field_ts) = field_ts { field_ts * 1_000_000 } else { ns };
                     debug!("解析出消息内容: driver={driver}, device={device}, metric={metric}, value={value}, ns={ns}");
-                    let mut point_builder = DataPoint::builder(measurement)
-                        .tag("driver", driver)
-                        .tag("device", device)
-                        .tag("metric", metric)
-                        .timestamp(ns as i64);
-                    point_builder = match value {
-                        Value::Bool(b) => point_builder.field("value", b),
-                        Value::U8(u) => point_builder.field("value", u as i64),
-                        Value::U32(u) => point_builder.field("value", u as i64),
-                        Value::I16(u) => point_builder.field("value", u as i64),
-                        Value::I32(u) => point_builder.field("value", u as i64),
-                        Value::F32(u) => point_builder.field("value", u as f64),
+                    let mut write_query = WriteQuery::new(Timestamp::Nanoseconds(ns as u128), measurement)
+                        .add_tag("driver", driver)
+                        .add_tag("device", device)
+                        .add_tag("metric", metric.clone());
+                    write_query = match value {
+                        Value::Bool(b) => write_query.add_field("value", b),
+                        Value::U8(u) => write_query.add_field("value", u as i64),
+                        Value::U32(u) => write_query.add_field("value", u as i64),
+                        Value::I16(u) => write_query.add_field("value", u as i64),
+                        Value::I32(u) => write_query.add_field("value", u as i64),
+                        Value::F32(u) => write_query.add_field("value", u as f64),
                     };
-                    let point = match point_builder.build() {
-                        Ok(point) => point,
-                        Err(e) => {
-                            return Err(MqttError::Handle(format!("DataPoint构建错误, {e}")));
-                        }
-                    };
-
-                    debug!("写入influxdb数据库: {point:?}");
-                    let points = vec![point];
-                    if let Err(e) = influxdb2_client
-                        .write(&influxdb2_bucket_clone, stream::iter(points))
-                        .await
-                    {
-                        return Err(MqttError::Handle(format!("插入InfluxDB数据库失败, {e}")));
-                    }
-                    sleep(Duration::from_secs(1)).await;
+                    write_query_sender.send((metric.clone(), write_query)).await.map_err(
+                        |e|MqttError::Handle(format!("发送 write_query 进通道错误, {e}")))?;
                     Ok(())
                 }
                 Err(e) => {
@@ -203,6 +236,5 @@ async fn apply_app_config(
                 }
             }
         }
-    })
-        .await?)
+    }).await?)
 }

@@ -26,7 +26,7 @@ pub struct MqttConfig {
     /// keep-alive 秒数
     #[serde(default = "default_keepalive")]
     pub keepalive_secs: u64,
-    /// rumqttc 内部 channel 容量
+    /// 缓存刷新批量将消息写入 mqtt 间隔
     #[serde(with = "duration_serde", default = "default_flush_interval")]
     pub flush_interval: Duration,
 }

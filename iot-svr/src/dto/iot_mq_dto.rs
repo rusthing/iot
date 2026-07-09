@@ -8,6 +8,7 @@ use typed_builder::TypedBuilder;
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Setters, TypedBuilder)]
 #[builder]
+#[serde(rename_all = "camelCase")]
 pub struct IotMqDto {
     /// 驱动实例名称（来自配置 name 字段）
     pub driver: String,
@@ -67,44 +68,9 @@ impl Display for Value {
     }
 }
 
-// impl From<bool> for Value {
-//     fn from(value: bool) -> Self {
-//         Self::Bool(value)
-//     }
-// }
-// 
-// impl From<u8> for Value {
-//     fn from(value: u8) -> Self {
-//         Self::U8(value)
-//     }
-// }
-// 
-// impl From<u32> for Value {
-//     fn from(value: u32) -> Self {
-//         Self::U32(value)
-//     }
-// }
-// 
-// impl From<i16> for Value {
-//     fn from(value: i16) -> Self {
-//         Self::I16(value)
-//     }
-// }
-// 
-// impl From<i32> for Value {
-//     fn from(value: i32) -> Self {
-//         Self::I32(value)
-//     }
-// }
-// 
-// impl From<f32> for Value {
-//     fn from(value: f32) -> Self {
-//         Self::F32(value)
-//     }
-// }
-
 /// 数据品质（协议无关）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Quality {
     /// true = 数据有效且最新
     pub good: bool,

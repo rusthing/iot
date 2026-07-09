@@ -33,7 +33,7 @@ notify-debouncer-mini = "0.7.0"
 strum = "0.28.0"
 
 wheel-rs = "1.8.1"
-robotech = "1.7.7"
+robotech = "1.8.0"
 
 iotg-core = { path = "crate/iotg-core" }
 iotg-iec104 = { path = "crate/iotg-iec104" }
@@ -44,10 +44,10 @@ iotg-hj212 = { path = "crate/iotg-hj212" }
 iotg-mqtt = { path = "crate/iotg-mqtt" }
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
-#[patch.crates-io]
-#wheel-rs = { path = "../../wheel-rs" }
-#robotech = { path = "../../robotech-rs/robotech" }
-#robotech-macros = { path = "../../robotech-rs/robotech-macros" }
+[patch.crates-io]
+wheel-rs = { path = "../../wheel-rs" }
+robotech = { path = "../../robotech-rs/robotech" }
+robotech-macros = { path = "../../robotech-rs/robotech-macros" }
 
 [package]
 name = "iot-gatex"
