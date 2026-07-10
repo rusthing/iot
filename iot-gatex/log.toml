@@ -1,5 +1,5 @@
 # 打印日志的最低级别(默认info)
-level = "debug"
+level = "info"
 # 日志文件轮转策略(默认Hourly，可选Minutely,Hourly,Daily,Weekly,Never)
 rotation = "minutely"
 # 是否打印 span 链（包括函数名和参数，需 #[instrument] 配合，默认false）

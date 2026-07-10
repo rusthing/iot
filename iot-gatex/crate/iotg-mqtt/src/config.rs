@@ -17,7 +17,7 @@ pub struct MqttConfig {
     #[serde(default = "default_qos")]
     pub qos: u8,
     /// rumqttc 内部 channel 容量
-    #[serde(default = "default_cap")]
+    #[serde(default = "default_channel_capacity")]
     pub channel_capacity: usize,
     #[serde(default)]
     pub username: Option<String>,
@@ -29,6 +29,9 @@ pub struct MqttConfig {
     /// 缓存刷新批量将消息写入 mqtt 间隔
     #[serde(with = "duration_serde", default = "default_flush_interval")]
     pub flush_interval: Duration,
+    /// 批量写入 mqtt 时，每个批次的容量
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
 }
 
 impl Default for MqttConfig {
@@ -39,11 +42,12 @@ impl Default for MqttConfig {
             client_id: default_client_id(),
             topic: default_topic(),
             qos: default_qos(),
-            channel_capacity: default_cap(),
+            channel_capacity: default_channel_capacity(),
             username: None,
             password: None,
             keepalive_secs: default_keepalive(),
             flush_interval: default_flush_interval(),
+            batch_size: default_batch_size(),
         }
     }
 }
@@ -60,8 +64,8 @@ fn default_topic() -> String {
 fn default_qos() -> u8 {
     0
 }
-fn default_cap() -> usize {
-    1024
+fn default_channel_capacity() -> usize {
+    5000
 }
 fn default_keepalive() -> u64 {
     30
@@ -69,4 +73,7 @@ fn default_keepalive() -> u64 {
 
 fn default_flush_interval() -> Duration {
     Duration::from_secs(5)
+}
+fn default_batch_size() -> usize {
+    100
 }

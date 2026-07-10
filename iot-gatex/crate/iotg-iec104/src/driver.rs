@@ -18,7 +18,7 @@ use iotg_core::{Batch, Driver};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
-use tokio::time::{interval, sleep_until, Instant, Sleep};
+use tokio::time::{interval, interval_at, sleep_until, Instant, Sleep};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -123,7 +123,6 @@ impl Session {
         // 创建定时器定时发送总召唤指令
         if self.cfg.get_gi {
             let get_gi_interval = self.cfg.get_gi_interval;
-            let mut gi_ticker = interval(get_gi_interval);
             let qoi = self.cfg.clone().qoi;
             let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
             let device_clone = device.clone();
@@ -137,6 +136,7 @@ impl Session {
                     }
                 }
                 info!(device = %device_clone, "start execute loop get general interrogation");
+                let mut gi_ticker = interval(get_gi_interval);
                 // 循环发送总召唤指令
                 loop {
                     gi_ticker.tick().await;
@@ -146,13 +146,13 @@ impl Session {
                         error!(device = %device_clone, "send i_frame general interrogation error: {:#}", e);
                         break;
                     }
+                    gi_ticker.reset();
                 }
             });
         }
         // 创建定时器定时发送召唤电度指令
         if self.cfg.get_kwh {
             let get_kwh_interval = self.cfg.get_kwh_interval;
-            let mut kwh_ticker = interval(get_kwh_interval);
             let qcc = self.cfg.clone().qcc;
             let i_frame_writer_sender_clone = i_frame_writer_sender.clone();
             let device_clone = device.clone();
@@ -167,8 +167,7 @@ impl Session {
                     }
                 }
                 info!(device = %device_clone, "start execute loop get kwh interrogation kwh_delay={:?}", kwh_delay);
-                // 延迟启动
-                sleep(kwh_delay).await;
+                let mut kwh_ticker = interval_at(Instant::now() + kwh_delay, get_kwh_interval);
                 // 循环发送召唤电度指令
                 loop {
                     kwh_ticker.tick().await;
@@ -178,6 +177,7 @@ impl Session {
                         error!(device = %device_clone, "send i_frame kwh interrogation error: {:#}", e);
                         break;
                     }
+                    kwh_ticker.reset();
                 }
             });
         }

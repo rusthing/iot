@@ -6,7 +6,7 @@ host             = "localhost"
 port             = 2404
 #get-gi           = false
 #get-gi-interval  = "1m"
-get-kwh          = true
+#get-kwh          = true
 #get-kwh-interval = "30s"
 
 [mqtt]

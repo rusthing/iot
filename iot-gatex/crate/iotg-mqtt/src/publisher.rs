@@ -48,7 +48,6 @@ use tokio::select;
 pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
     let qos = to_qos(cfg.qos);
     let topic = cfg.topic.clone();
-    // let topic_clone = topic.clone();
     let flush_interval = cfg.flush_interval;
 
     let mut opts = MqttOptions::new(&cfg.client_id, &cfg.host, cfg.port);
@@ -89,7 +88,7 @@ pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
             // 3. 定时刷新缓存
             _ = sleep_until(next_flush) => {
                 if !cache.is_empty() {
-                    debug!("mqtt cache {} points", cache.len());
+                    info!("mqtt cache {} points", cache.len());
                     for pt in cache.values() {
                         let json = json!(pt).to_string();
                         debug!("mqtt will publish {topic}: {json}");
@@ -100,7 +99,7 @@ pub async fn run(cfg: MqttConfig, mut rx: mpsc::Receiver<Batch>) {
                         debug!("mqtt published {topic}: {pt}");
                     }
 
-                    debug!("mqtt flushed {} points", cache.len());
+                    info!("mqtt flushed {} points", cache.len());
                     cache.clear();
                 }
                 // 更新下次刷新时间

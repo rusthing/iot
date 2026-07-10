@@ -19,7 +19,8 @@ use tokio::select;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, Instant};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
+use wheel_rs::process::{get_current_pid, send_signal_by_instruction};
 
 // 命令行参数使用定义
 // version: 命令行添加 -V/--version参数可以查看版本信息
@@ -84,12 +85,8 @@ async fn main() -> anyhow::Result<()> {
     watch_cfg_file!("app", files.clone(), {
         let (app_config, _) =
             build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
-        mqtt_client_clone.disconnect().await.ok(); // 主动断开连接
-        mqtt_event_loop_handle_clone.abort(); // 取消事件循环任务
-        apply_app_config(app_config, None)
-            .await
-            .expect("配置无法应用");
-        debug!("重新加载配置成功");
+        info!("配置文件已更新，优雅退出");
+        quit();
     });
 
     // 监听系统信号与等待退出
@@ -233,4 +230,8 @@ async fn apply_app_config(
             }
         }
     }).await?)
+}
+
+fn quit() {
+    let _ = send_signal_by_instruction("quit", get_current_pid());
 }
