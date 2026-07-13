@@ -73,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 监听配置文件变化
     watch_cfg_file!("app", files.clone(), {
+        let _ = build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
         info!("配置文件已更新，优雅退出");
         quit();
     });

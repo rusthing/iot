@@ -79,12 +79,9 @@ async fn main() -> anyhow::Result<()> {
     // 应用配置
     let (mqtt_client, mqtt_event_loop_handle) = apply_app_config(app_config, old_pid).await?;
 
-    let mqtt_client_clone = mqtt_client.clone();
-    let mqtt_event_loop_handle_clone = mqtt_event_loop_handle.clone();
     // 监听配置文件变化
     watch_cfg_file!("app", files.clone(), {
-        let (app_config, _) =
-            build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
+        let _ = build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
         info!("配置文件已更新，优雅退出");
         quit();
     });
