@@ -18,7 +18,7 @@ serde_json = "1.0.150"
 serde_with = "3.21.0"
 thiserror = "2.0.18"
 async-trait = "0.1.89"
-regex = "1.12.4"
+regex = "1.13.1"
 notify-debouncer-mini = "0.7.0"
 futures = "0.3.32"
 typed-builder = { version = "0.23.2" }
@@ -28,7 +28,7 @@ rumqttc = "0.25.1"
 influxdb = "0.8.0"
 
 
-wheel-rs = "1.8.2"
+wheel-rs = "1.9.0"
 robotech = { version = "1.8.0", features = ["app", "mqtt", "influxdb", "macros"] }
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
