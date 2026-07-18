@@ -14,23 +14,21 @@ fn main() {
     // 获取输出目录路径
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
-    // 复制配置文件到输出目录
-    // 获取源配置文件路径
+    // 复制应用的配置文件到输出目录
     let config_file_name = env!("CARGO_PKG_NAME");
-    copy_config_file(&out_dir, config_file_name, "toml");
-    copy_config_file(&out_dir, config_file_name, "yml");
-    copy_config_file(&out_dir, config_file_name, "json");
-    copy_config_file(&out_dir, config_file_name, "ini");
-    copy_config_file(&out_dir, config_file_name, "ron");
+    copy_file(&out_dir, config_file_name, "toml");
+    copy_file(&out_dir, config_file_name, "yml");
+    copy_file(&out_dir, config_file_name, "json");
+    copy_file(&out_dir, config_file_name, "ini");
+    copy_file(&out_dir, config_file_name, "ron");
 
-    // 复制配置文件到输出目录
-    // 获取源配置文件路径
+    // 复制日志的配置文件到输出目录
     let config_file_name = "log";
-    copy_config_file(&out_dir, config_file_name, "toml");
-    copy_config_file(&out_dir, config_file_name, "yml");
-    copy_config_file(&out_dir, config_file_name, "json");
-    copy_config_file(&out_dir, config_file_name, "ini");
-    copy_config_file(&out_dir, config_file_name, "ron");
+    copy_file(&out_dir, config_file_name, "toml");
+    copy_file(&out_dir, config_file_name, "yml");
+    copy_file(&out_dir, config_file_name, "json");
+    copy_file(&out_dir, config_file_name, "ini");
+    copy_file(&out_dir, config_file_name, "ron");
 }
 
 /// 复制指定扩展名的配置文件到输出目录
@@ -55,7 +53,7 @@ fn main() {
 /// - 当无法访问环境变量时
 /// - 当路径操作失败时
 /// - 当文件复制失败时
-fn copy_config_file(out_dir: &str, config_file_name: &str, file_ext: &str) {
+fn copy_file(out_dir: &str, config_file_name: &str, file_ext: &str) {
     // 获取源配置文件路径
     let config_file_name = format!("{config_file_name}.{file_ext}");
 
