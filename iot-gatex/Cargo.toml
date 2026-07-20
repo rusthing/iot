@@ -32,7 +32,7 @@ num_enum = "0.7.6"
 notify-debouncer-mini = "0.7.0"
 strum = "0.28.0"
 
-wheel-rs = "1.9.1"
+wheel-rs = "1.9.2"
 robotech = "1.9.0"
 
 iotg-core = { path = "crate/iotg-core" }

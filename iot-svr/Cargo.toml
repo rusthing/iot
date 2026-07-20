@@ -28,7 +28,7 @@ rumqttc = "0.25.1"
 influxdb = "0.8.0"
 
 
-wheel-rs = "1.9.1"
+wheel-rs = "1.9.2"
 robotech = { version = "1.9.0", features = ["app", "mqtt", "influxdb", "macros"] }
 
 # 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
