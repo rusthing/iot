@@ -26,7 +26,7 @@ impl Driver for Dlt645Driver {
 
         // 实现步骤（TCP 透传模式）：
         //   1. TcpStream::connect(host:port)  /  串口: SerialStream::open
-        //   2. for data_id in cfg.data_ids { 构建请求帧 → write → read 响应 }
+        //   2. for data_id in app.data_ids { 构建请求帧 → write → read 响应 }
         //   3. 校验 CS 累加和，解析 BCD 数据域
         //   4. 构造 DataPoint { device_id = meter_addr, tag = data_id, value }
         //   5. tx.send(batch).await；sleep(interval_ms)；断连后重连

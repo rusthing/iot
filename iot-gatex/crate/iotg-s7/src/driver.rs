@@ -28,7 +28,7 @@ impl Driver for S7Driver {
         //   1. TcpStream::connect(host:102)
         //   2. 发送 COTP Connection Request（TPKT 包装）
         //   3. 发送 S7 Setup Communication（PDU 协商，最大 PDU 通常 240B）
-        //   4. 将 cfg.reads 按 PDU 大小分批，构建 Read Var Request
+        //   4. 将 app.reads 按 PDU 大小分批，构建 Read Var Request
         //   5. 解析 Read Var Response，按 data_type 转 Value
         //   6. tx.send(batch)；sleep(interval_ms)；断连后重连
         loop {

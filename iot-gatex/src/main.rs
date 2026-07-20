@@ -8,13 +8,12 @@ use iotg_iec104::Iec104Driver;
 use iotg_modbus::ModbusDriver;
 use iotg_mqtt::run as mqtt_run;
 use iotg_s7::S7Driver;
+use robotech::app::watch_file;
 use robotech::app::{build_app_cfg, wait_app_exit};
-use robotech::cfg::watch_cfg_file;
 use robotech::env::init_env;
 use robotech::log::init_log;
-use robotech::macros::{log_call, watch_cfg_file};
+use robotech::macros::{log_call, watch_file};
 use robotech::signal::SignalManager;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info};
 use wheel_rs::process::{get_current_pid, send_signal_by_instruction};
@@ -68,11 +67,12 @@ async fn main() -> anyhow::Result<()> {
 
     // 初始化信号(_signal_manager变量将在程序优雅退出时释放，释放时删除pid文件)
     let (mut signal_manager, old_pid) = SignalManager::new(signal)?;
-    let (app_config, files) = build_app_cfg::<AppConfig>(config_file.clone())?;
+    let (app_config, mut files) = build_app_cfg::<AppConfig>(config_file.clone())?;
+    add_app_file_to_watch(&mut files)?;
     let files = Arc::new(files);
 
-    // 监听配置文件变化
-    watch_cfg_file!("app", files.clone(), {
+    // 监听文件变化
+    watch_file!("app,cfg", files.clone(), {
         let _ = build_app_cfg::<AppConfig>(config_file.clone()).expect("无法加载配置文件");
         info!("配置文件已更新，优雅退出");
         quit();

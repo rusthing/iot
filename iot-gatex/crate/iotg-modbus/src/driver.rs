@@ -27,7 +27,7 @@ impl Driver for ModbusDriver {
         // 骨架：循环等待，直到 channel 关闭
         // 实现步骤：
         //   1. TcpStream::connect(host:port)
-        //   2. 按 cfg.polls 逐段 Read Holding Registers
+        //   2. 按 app.polls 逐段 Read Holding Registers
         //   3. 解析响应，构造 DataPoint，tx.send(batch).await
         //   4. sleep(interval_ms)，断连后重连
         loop {
