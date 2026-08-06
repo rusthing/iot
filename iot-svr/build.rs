@@ -37,6 +37,13 @@ fn main() {
         copy_file(project_root, file_name, ext, dest_dir_path);
     }
 
+    // 复制开发的配置文件到输出目录
+    let tmp_file_name = format!("{}-test", file_name);
+    file_name = tmp_file_name.as_str();
+    for ext in ["toml", "json", "json5", "yml", "yaml", "ini", "ron"] {
+        copy_file(project_root, file_name, ext, dest_dir_path);
+    }
+
     // 复制生产的配置文件到输出目录
     let tmp_file_name = format!("{}-prod", file_name);
     file_name = tmp_file_name.as_str();
