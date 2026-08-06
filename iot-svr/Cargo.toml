@@ -10,7 +10,7 @@ native-tls = { version = "0.2.18", features = ["vendored"] }
 
 tracing = "0.1.44"
 anyhow = "1.0.102"
-clap = { version = "4.6.4", features = ["derive"] }
+clap = { version = "4.6.5", features = ["derive"] }
 log = "0.4.30"
 tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 serde = { version = "1.0.229", features = ["derive"] }
