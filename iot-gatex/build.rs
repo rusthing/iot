@@ -25,20 +25,36 @@ fn main() {
     // );
 
     // 复制应用的配置文件到输出目录
-    let file_name = env!("CARGO_PKG_NAME");
-    copy_file(project_root, file_name, "toml", dest_dir_path);
-    copy_file(project_root, file_name, "yml", dest_dir_path);
-    copy_file(project_root, file_name, "json", dest_dir_path);
-    copy_file(project_root, file_name, "ini", dest_dir_path);
-    copy_file(project_root, file_name, "ron", dest_dir_path);
+    let mut file_name = env!("CARGO_PKG_NAME");
+    for ext in ["toml", "json", "json5", "yml", "yaml", "ini", "ron"] {
+        copy_file(project_root, file_name, ext, dest_dir_path);
+    }
+
+    // 复制开发的配置文件到输出目录
+    let tmp_file_name = format!("{}-dev", file_name);
+    file_name = tmp_file_name.as_str();
+    for ext in ["toml", "json", "json5", "yml", "yaml", "ini", "ron"] {
+        copy_file(project_root, file_name, ext, dest_dir_path);
+    }
+
+    // 复制生产的配置文件到输出目录
+    let tmp_file_name = format!("{}-prod", file_name);
+    file_name = tmp_file_name.as_str();
+    for ext in ["toml", "json", "json5", "yml", "yaml", "ini", "ron"] {
+        copy_file(project_root, file_name, ext, dest_dir_path);
+    }
 
     // 复制日志的配置文件到输出目录
-    let file_name = "log";
-    copy_file(project_root, file_name, "toml", dest_dir_path);
-    copy_file(project_root, file_name, "yml", dest_dir_path);
-    copy_file(project_root, file_name, "json", dest_dir_path);
-    copy_file(project_root, file_name, "ini", dest_dir_path);
-    copy_file(project_root, file_name, "ron", dest_dir_path);
+    file_name = "log";
+    for ext in ["toml", "json", "json5", "yml", "yaml", "ini", "ron"] {
+        copy_file(project_root, file_name, ext, dest_dir_path);
+    }
+
+    // 复制数据库升级目录到输出目录
+    copy_dir(project_root, "migrations", dest_dir_path);
+
+    // 复制证书目录到输出目录
+    copy_dir(project_root, "cert", dest_dir_path);
 }
 
 fn copy_dir(project_root: &str, src_dir: &str, dest_dir_path: &Path) {
