@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     // 解析命令行参数
     let Args {
         signal,
-        config_file,
+        config_file: config_file_path,
     } = Args::parse();
 
     // 初始化环境变量;
