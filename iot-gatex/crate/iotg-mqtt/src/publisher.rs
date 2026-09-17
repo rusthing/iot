@@ -37,7 +37,7 @@ fn to_qos(q: u8) -> QoS {
 //             "overflow":    pt.quality.overflow,
 //         },
 //         "ns":       pt.ns,
-//         "fieldTs": pt.field_ts.map(|t| t),
+//         "fieldTs": pt.field_ms.map(|t| t),
 //     })
 //     json!(pt).to_string().into_bytes()
 // }

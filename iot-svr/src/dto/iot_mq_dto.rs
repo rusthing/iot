@@ -24,7 +24,7 @@ pub struct IotMqDto {
     pub ns: u64,
     /// 携带的时标（如有）
     #[builder(default)]
-    pub field_ts: Option<u64>,
+    pub field_ms: Option<u64>,
 }
 
 impl Display for IotMqDto {
@@ -32,7 +32,7 @@ impl Display for IotMqDto {
         write!(
             f,
             "{} {} {} {} {:?} {} {:?}",
-            self.driver, self.device, self.metric, self.value, self.quality, self.ns, self.field_ts
+            self.driver, self.device, self.metric, self.value, self.quality, self.ns, self.field_ms
         )
     }
 }

@@ -194,7 +194,7 @@ async fn apply_app_config(
                         metric,
                         value,
                         ns,
-                        field_ts,
+                        field_ms,
                         quality: _,
                     } = iot_mq_dto;
                     let measurement = match value {
@@ -202,7 +202,7 @@ async fn apply_app_config(
                         Value::U8(_) | Value::U32(_) | Value::I16(_) | Value::I32(_) => "POINT-I64",
                         Value::F32(_) => "POINT-F64",
                     };
-                    let ns = if let Some(field_ts) = field_ts { field_ts * 1_000_000 } else { ns };
+                    let ns = if let Some(field_ms) = field_ms { field_ms * 1_000_000 } else { ns };
                     debug!("解析出消息内容: driver={driver}, device={device}, metric={metric}, value={value}, ns={ns}");
                     let mut write_query = WriteQuery::new(Timestamp::Nanoseconds(ns as u128), measurement)
                         .add_tag("driver", driver)

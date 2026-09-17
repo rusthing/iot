@@ -108,7 +108,7 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<IotMqDto>, 
         let cot_text = CotType::try_from_primitive(cot)
             .unwrap_or(CotType::NotSupport)
             .to_text();
-        let Some((value, quality, consumed, field_ts)) =
+        let Some((value, quality, consumed, field_ms)) =
             parse_element(type_id, cot_text, &asdu[off..])
         else {
             break;
@@ -116,7 +116,7 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<IotMqDto>, 
         off += consumed;
 
         debug!(
-            "parse element: metric={metric} value={value:?} quality={quality:?} consumed={consumed} field_ts={field_ts:?}"
+            "parse element: metric={metric} value={value:?} quality={quality:?} consumed={consumed} field_ms={field_ms:?}"
         );
 
         let mut pt = IotMqDto::builder()
@@ -126,10 +126,10 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<IotMqDto>, 
             .value(value)
             .quality(quality)
             .ns(now_ns()?)
-            .field_ts(field_ts)
+            .field_ms(field_ms)
             .build();
-        if let Some(ts) = field_ts {
-            pt = pt.field_ts(Some(ts));
+        if let Some(ts) = field_ms {
+            pt = pt.field_ms(Some(ts));
         }
         out.push(pt);
     }
@@ -310,11 +310,10 @@ fn parse_cp56(d: &[u8]) -> Option<u64> {
     let month = (d[5] & 0x0F) as u32;
     let year = 2000 + (d[6] & 0x7F) as i32;
     let sec = ms / 1000;
-    Some(
-        Utc.with_ymd_and_hms(year, month, dom, hour, min, sec)
-            .single()?
-            .timestamp_millis() as u64,
-    )
+    let subsec_ms = ms % 1000; // 取出剩余毫秒
+    Utc.with_ymd_and_hms(year, month, dom, hour, min, sec)
+        .single()?
+        .timestamp_millis() + subsec_ms as i64
 }
 
 /// 构建总召唤(General Interrogation，GI)指令 C_IC_NA_1
