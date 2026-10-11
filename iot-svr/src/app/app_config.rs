@@ -9,8 +9,6 @@ use serde::Deserialize;
 pub struct AppConfig {
     #[serde(default)]
     pub iot: IotConfig,
-    #[serde()]
     pub mqtt: MqttConfig,
-    #[serde()]
     pub influxdb: InfluxdbConfig,
 }
