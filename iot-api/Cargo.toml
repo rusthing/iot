@@ -1,0 +1,17 @@
+[package]
+name = "iot-api"
+version = "1.0.0"
+edition = "2024"
+authors = ["zbz"]
+license = "MIT"
+keywords = ["iot", "api", "dto"]
+description = "Shared DTO types for the IOT gateway and server"
+categories = ["network-programming"]
+homepage = "https://github.com/rusthing/iot"
+repository = "https://github.com/rusthing/iot"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_with = { workspace = true }
+derive_setters = { workspace = true }
+typed-builder = { workspace = true }

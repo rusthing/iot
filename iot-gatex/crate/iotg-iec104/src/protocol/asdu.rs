@@ -125,7 +125,7 @@ pub fn parse(driver: &str, device: &str, asdu: &Bytes) -> Result<Vec<IotMqDto>, 
             .metric(metric)
             .value(value)
             .quality(quality)
-            .ns(now_ns()?)
+            .ns(now_ns())
             .field_ms(field_ms)
             .build();
         if let Some(ts) = field_ms {
@@ -311,9 +311,13 @@ fn parse_cp56(d: &[u8]) -> Option<u64> {
     let year = 2000 + (d[6] & 0x7F) as i32;
     let sec = ms / 1000;
     let subsec_ms = ms % 1000; // 取出剩余毫秒
-    Utc.with_ymd_and_hms(year, month, dom, hour, min, sec)
+    // CP56Time2a 精度为毫秒，`field_ms` 为 u64 毫秒时间戳
+    let ms_ts = Utc
+        .with_ymd_and_hms(year, month, dom, hour, min, sec)
         .single()?
-        .timestamp_millis() + subsec_ms as i64
+        .timestamp_millis()
+        + subsec_ms as i64;
+    Some(ms_ts as u64)
 }
 
 /// 构建总召唤(General Interrogation，GI)指令 C_IC_NA_1

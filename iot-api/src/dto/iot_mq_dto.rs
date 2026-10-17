@@ -4,7 +4,18 @@ use serde_with::skip_serializing_none;
 use std::fmt::Display;
 use typed_builder::TypedBuilder;
 
-/// 所有协议共用的数据点
+/// # 采集数据点（所有协议共用）
+///
+/// 网关各协议驱动解析后统一产出的数据点，也是通过 MQTT 发布给服务端的线协议载体。
+///
+/// ## 字段
+/// * `driver` - 驱动实例名称（来自配置 `name` 字段）
+/// * `device` - 设备标识，各协议自定义（如 `ca1`、`unit1`、`slave3`）
+/// * `metric` - 指标
+/// * `value` - 值
+/// * `quality` - 数据质量
+/// * `ns` - 采集器接收时间（纳秒级）
+/// * `field_ms` - 设备携带的时标（毫秒级，如有）
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Setters, TypedBuilder)]
 #[builder]
@@ -37,7 +48,9 @@ impl Display for IotMqDto {
     }
 }
 
-/// 值类型：覆盖所有工业协议常见类型
+/// # 值类型
+///
+/// 覆盖所有工业协议常见类型。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value")]
 pub enum Value {
@@ -68,19 +81,24 @@ impl Display for Value {
     }
 }
 
-/// 数据品质（协议无关）
+/// # 数据品质（协议无关）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Quality {
     /// true = 数据有效且最新
     pub good: bool,
+    /// 无效
     pub invalid: bool,
+    /// 非当前值
     pub not_topical: bool,
+    /// 被取代
     pub substituted: bool,
+    /// 溢出
     pub overflow: bool,
 }
 
 impl Quality {
+    /// 有效数据
     pub const GOOD: Quality = Quality {
         good: true,
         invalid: false,
@@ -88,6 +106,7 @@ impl Quality {
         substituted: false,
         overflow: false,
     };
+    /// 无效数据
     pub const BAD: Quality = Quality {
         good: false,
         invalid: true,
@@ -96,6 +115,13 @@ impl Quality {
         overflow: false,
     };
 
+    /// # 由 IEC-104 的 QDS 字节解析数据品质
+    ///
+    /// ## 参数
+    /// * `b` - IEC-104 ASDU 中的品质描述字节
+    ///
+    /// ## 返回值
+    /// 解析后的数据品质
     pub fn from_iec104_qds(b: u8) -> Self {
         Self {
             good: (b & 0x80) == 0 && (b & 0x40) == 0,

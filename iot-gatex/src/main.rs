@@ -1,124 +1,28 @@
-use anyhow::Context;
-use clap::Parser;
-use iot_gatex::app::{set_app_config, AppConfig, DriverConfig};
-use iotg_core::{Batch, Driver, CHANNEL_CAP};
-use iotg_dlt645::Dlt645Driver;
-use iotg_hj212::Hj212Driver;
-use iotg_iec104::Iec104Driver;
-use iotg_modbus::ModbusDriver;
-use iotg_mqtt::run as mqtt_run;
-use iotg_s7::S7Driver;
-use robotech::app::watch_file;
-use robotech::app::{build_app_cfg, wait_app_exit};
-use robotech::env::init_env;
-use robotech::log::init_log;
-use robotech::macros::{log_call, watch_file};
-use robotech::signal::SignalManager;
-use tokio::sync::mpsc;
-use tracing::{debug, info};
-use wheel_rs::process::{get_current_pid, send_signal_by_instruction};
+use config::Value;
+use iot_gatex::config::AppConfig;
+use iot_gatex::gatex::setup_gatex;
+use robotech::macros::{bootstrap, log_call};
+use std::collections::HashMap;
+use std::sync::Arc;
 
-#[derive(Parser, Debug, Clone)]
-// 命令行参数使用定义
-// version: 命令行添加 -V/--version参数可以查看版本信息
-// about: --help命令第一行显示文档注释的内容
-// long_about = None: 只显示文档注释的第一行(包括about的和arg的)
-// help_template: 帮助模板
-# [command(
-                  author = env!("CARGO_PKG_AUTHORS"),
-                  version,
-                  about,
-                  help_template = "{name} v{version} - {about}\n\nAUTHOR: {author}\n\nUSAGE: {usage}\n\nOPTIONS:\n{options}"
-                  )]
-struct Args {
-    /// 配置文件的路径
-    #[arg(short, long)]
-    config_file: Option<String>,
-    /// 监听信号，支持指令如下:
-    /// * `start` - 默认值，先发送`SIGCONT`信号(kill -0)，检查程序是否已运行(如果程序已运行，会报错)，然后启动程序
-    /// * `restart` - 先发送`SIGTERM`信号(kill -15)，如果旧程序已运行，收到信号后会停止运行，然后启动新程序
-    /// * `stop`/`s` - 发送`SIGTERM`信号(kill -15)，用于终止程序，优雅退出
-    /// * `kill`/`k` - 发送`SIGKILL`信号(kill -9)，用于强制终止程序
-    #[arg(
-        short,
-        long,
-        default_value = "start",
-        long_help = r#"监听信号，支持指令如下:
-    start - 默认值，先发送 SIGCONT 信号(kill -0)，检查程序是否已运行(如果程序已运行，会报错)，然后启动程序
-    restart - 先发送 SIGTERM 信号(kill -15)，如果旧程序已运行，收到信号后会停止运行，然后启动新程序
-    stop/s - 发送 SIGTERM 信号(kill -15)，用于终止程序，优雅退出
-    kill/k - 发送 SIGKILL 信号(kill -9)，用于强制终止程序"#
-    )]
-    signal: String,
-}
+bootstrap!(AppConfig);
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // 解析命令行参数
-    let Args {
-        signal,
-        config_file: config_file_path,
-    } = Args::parse();
-
-    // 初始化环境变量;
-    init_env()?;
-    // 初始化日志系统
-    let _log_file_watcher = init_log().await?;
-
-    // 初始化信号(_signal_manager变量将在程序优雅退出时释放，释放时删除pid文件)
-    let (mut signal_manager, old_pid) = SignalManager::new(signal)?;
-    let (app_config, mut files) = build_app_cfg::<AppConfig>(config_file.clone()).await?;
-    add_app_file_to_watch(&mut files)?;
-    let files = Arc::new(files);
-
-    // 监听文件变化
-    watch_file!("app,cfg", files.clone(), {
-        let _ = build_app_cfg::<AppConfig>(config_file.clone()).await.expect("无法加载配置文件");
-        info!("配置文件已更新，优雅退出");
-        quit();
-    });
-
-    // 应用配置
-    apply_app_config(app_config, old_pid).await?;
-
-    // 监听系统信号与等待退出
-    let signal_receiver = signal_manager.watch_signal()?;
-    Ok(wait_app_exit(signal_receiver, || async move { Ok(()) }).await?)
-}
-
+/// # 初始化或更新应用配置
+///
+/// 由 `bootstrap!` 生成的 `main()` 在首次启动与配置热更新时调用。
+///
+/// ## 参数
+/// * `app_config` - 最新的应用配置
+/// * `changed` - 本次配置变更的差异；`None` 表示首次启动
+/// * `_port` - Web 端口（网关无 Web 服务，未使用）
+/// * `_old_pid` - 旧进程 PID（未使用）
 #[log_call]
-async fn apply_app_config(app_config: AppConfig, old_pid: Option<u32>) -> anyhow::Result<()> {
-    debug!("应用App配置...");
-    let AppConfig { mqtt, drivers } = app_config.clone();
-    set_app_config(app_config)?;
-
-    let (tx, rx) = mpsc::channel::<Batch>(CHANNEL_CAP);
-
-    for driver_cfg in drivers {
-        let driver = build_driver(driver_cfg).context("build driver")?;
-        let tx = tx.clone();
-        tokio::spawn(async move { driver.run(tx).await });
-    }
-
-    // 主持有的 tx 释放后，channel 在所有驱动退出时自然关闭
-    drop(tx);
-
-    // MQTT sink 阻塞当前 task，直到 channel 关闭
-    tokio::spawn(async move { mqtt_run(mqtt, rx).await });
-
+async fn setup(
+    app_config: &Arc<AppConfig>,
+    changed: &Option<HashMap<String, Value>>,
+    _port: Option<u16>,
+    _old_pid: Option<u32>,
+) -> Result<(), anyhow::Error> {
+    setup_gatex(app_config.clone(), changed).await?;
     Ok(())
-}
-
-fn build_driver(cfg: DriverConfig) -> anyhow::Result<Box<dyn Driver>> {
-    Ok(match cfg {
-        DriverConfig::Iec104(c) => Box::new(Iec104Driver::new(c)),
-        DriverConfig::Modbus(c) => Box::new(ModbusDriver::new(c)),
-        DriverConfig::Dlt645(c) => Box::new(Dlt645Driver::new(c)),
-        DriverConfig::S7(c) => Box::new(S7Driver::new(c)),
-        DriverConfig::Hj212(c) => Box::new(Hj212Driver::new(c)),
-    })
-}
-
-fn quit() {
-    let _ = send_signal_by_instruction("quit", get_current_pid());
 }

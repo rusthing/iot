@@ -19,3 +19,4 @@ hex = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 
 wheel-rs = { workspace = true }
+iot-api = { workspace = true }

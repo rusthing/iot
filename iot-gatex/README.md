@@ -16,9 +16,11 @@
 
 ```
 iot-gatex/
-├── src/main.rs              配置加载、驱动装配、启动
-├── config.toml              运行时配置（见下文）
-└── crates/
+├── src/main.rs              bootstrap! + setup()（启动入口）
+├── src/config/              AppConfig + DriverConfig（应用配置）
+├── src/gatex/               驱动装配与启动逻辑（setup_gatex）
+├── iot-gatex.toml           运行时配置（见下文）
+└── crate/
     ├── iotg-core/           Driver trait + DataPoint + Value + Quality
     ├── iotg-iec104/         IEC 60870-5-104 完整实现
     ├── iotg-modbus/         Modbus TCP 骨架
@@ -28,36 +30,37 @@ iot-gatex/
     └── iotg-mqtt/           MQTT Sink（rumqttc）
 ```
 
+> 采集数据点类型（`IotMqDto` / `Value` / `Quality`）统一定义在 `iot-api` crate 中，
+> `iotg-core` 直接转发，网关与服务端共用一份定义。
+
 ## 数据模型
 
-所有协议统一输出 `DataPoint`：
+所有协议统一输出采集数据点 `IotMqDto`（定义在 `iot-api`，网关与服务端共用）：
 
 ```rust
-pub struct DataPoint {
-    pub driver:    String,          // 驱动实例名（来自配置 name）
-    pub device_id: String,          // 设备标识（如 "ca1"、"unit1"）
-    pub tag:       String,          // 数据标签（如 "ioa1001"、"hr40001"）
-    pub value:     Value,           // Bool / Int / Float / Text / Bytes
-    pub quality:   Quality,         // good / invalid / not_topical / ...
-    pub ts:        DateTime<Utc>,   // 本地接收时间
-    pub field_ts:  Option<...>,     // 设备携带时标（如有）
+pub struct IotMqDto {
+    pub driver:   String,          // 驱动实例名（来自配置 name）
+    pub device:   String,          // 设备标识（如 "ca1"、"unit1"、"slave3"）
+    pub metric:   String,          // 指标（如 "ioa1001"、"hr40001"）
+    pub value:    Value,           // Bool / U8 / U32 / I16 / I32 / F32
+    pub quality:  Quality,         // good / invalid / notTopical / substituted / overflow
+    pub ns:       u64,             // 采集器接收时间（纳秒）
+    pub field_ms: Option<u64>,     // 设备携带时标（毫秒，如有）
 }
 ```
 
-MQTT topic 格式：`{prefix}/{driver}/{device_id}/{tag}`
-
-MQTT payload（JSON）：
+序列化为 camelCase JSON 后发布到配置的 `[mqtt].topic`：
 
 ```json
 {
-  "driver":    "substation-a",
-  "device_id": "ca1",
-  "tag":       "ioa1001",
-  "value":     220.4,
-  "quality":   { "good": true, "invalid": false, "not_topical": false,
-                 "substituted": false, "overflow": false },
-  "ts":        "2026-04-10T12:00:00Z",
-  "field_ts":  null
+  "driver": "substation-a",
+  "device": "ca1",
+  "metric": "ioa1001",
+  "value": { "kind": "F32", "value": 220.4 },
+  "quality": { "good": true, "invalid": false, "notTopical": false,
+               "substituted": false, "overflow": false },
+  "ns": 1760000000000000000,
+  "fieldMs": 1760000000000
 }
 ```
 
@@ -65,8 +68,7 @@ MQTT payload（JSON）：
 
 ```bash
 # 1. 编辑配置
-cp config.toml.example config.toml
-vim config.toml
+vim iot-gatex.toml
 
 # 2. 编译运行
 cargo build --release
@@ -76,28 +78,27 @@ cargo build --release
 RUST_LOG=debug ./target/release/iot-gatex
 
 # 4. 订阅所有数据
-mosquitto_sub -h 127.0.0.1 -t "gatex/#" -v
+mosquitto_sub -h 127.0.0.1 -t "iot-gatex" -v
 ```
 
-## config.toml 说明
+## iot-gatex.toml 说明
 
 ```toml
 [mqtt]
-host          = "127.0.0.1"
-port          = 1883
-client_id     = "iot-gatex"
-topic_prefix  = "gatex"
-qos           = 1             # 0 / 1 / 2
+client-id = "iot-gatex"
+host      = "127.0.0.1"
+port      = 1883
+topic     = "iot-gatex"
+qos       = 1             # 0 / 1 / 2
 
 # IEC-104 从站
 [[drivers]]
-type             = "iec104"
-name             = "substation-a"   # 唯一实例名，出现在 topic 和日志中
-host             = "192.168.1.10"
-port             = 2404
-ca               = 1
-auto_interrogate = true
-qoi              = 20               # 20 = 全站总召唤
+type    = "iec104"
+name    = "substation-a"    # 唯一实例名，出现在日志中
+host    = "192.168.1.10"
+port    = 2404
+get-gi  = true              # 启动后自动总召唤
+qoi     = 20                # 20 = 全站总召唤
 
 # Modbus TCP
 [[drivers]]
@@ -145,14 +146,15 @@ listen_port  = 7070
 
 ## 新增协议
 
-1. 在 `crates/` 下新建 `iotg-<proto>/`，结构与 `iotg-modbus` 相同
+1. 在 `crate/` 下新建 `iotg-<proto>/`，结构与 `iotg-modbus` 相同
 2. 实现 `Driver` trait（`iotg-core::Driver`），核心只有一个方法：
    ```rust
    async fn run(self: Box<Self>, tx: mpsc::Sender<Batch>);
    ```
 3. 在 `Cargo.toml` workspace `members` 中添加新 crate
-4. 在 `src/main.rs` 的 `DriverConfig` enum 和 `build_driver` 中加一个分支
-5. 在 `config.toml` 中用新的 `type = "<proto>"` 声明实例
+4. 在 `src/config/app_config.rs` 的 `DriverConfig` enum 和 `src/gatex/gatex_utils.rs`
+   的 `build_driver` 中加一个分支
+5. 在 `iot-gatex.toml` 中用新的 `type = "<proto>"` 声明实例
 
 **不需要修改任何其他 crate**，MQTT sink、channel、日志全部自动继承。
 

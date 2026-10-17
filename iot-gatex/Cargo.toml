@@ -1,70 +1,27 @@
-[workspace]
-members = [
-    ".",
-    "crate/iotg-core",
-    "crate/iotg-iec104",
-    "crate/iotg-modbus",
-    "crate/iotg-dlt645",
-    "crate/iotg-s7",
-    "crate/iotg-hj212",
-    "crate/iotg-mqtt",
-]
-resolver = "3"
-
-[workspace.dependencies]
-log = "0.4.34"
-tracing = "0.1.44"
-anyhow = "1.0.104"
-thiserror = "2.0.21"
-clap = "4.6.7"
-async-trait = "0.1.92"
-chrono = "0.4.45"
-serde = "1.0.229"
-serde_json = "1.0.151"
-serde_with = "3.24.0"
-tokio = "1.53.2"
-derive_setters = "0.1.9"
-typed-builder = "0.23.2"
-bytes = "1.12.1"
-hex = "0.4.3"
-rumqttc = "0.25.1"
-num_enum = "0.7.6"
-notify-debouncer-mini = "0.7.0"
-strum = "0.28.0"
-
-wheel-rs = "1.12.0"
-robotech = "1.16.0"
-
-iotg-core = { path = "crate/iotg-core" }
-iotg-iec104 = { path = "crate/iotg-iec104" }
-iotg-modbus = { path = "crate/iotg-modbus" }
-iotg-dlt645 = { path = "crate/iotg-dlt645" }
-iotg-s7 = { path = "crate/iotg-s7" }
-iotg-hj212 = { path = "crate/iotg-hj212" }
-iotg-mqtt = { path = "crate/iotg-mqtt" }
-
-# 用cross build构建时要把下面的节点注释起来才能编译，否则会报robotech的依赖错误
-#[patch.crates-io]
-#wheel-rs = { path = "../../wheel-rs" }
-#robotech = { path = "../../robotech-rs/robotech" }
-#robotech-macros = { path = "../../robotech-rs/robotech-macros" }
-
 [package]
 name = "iot-gatex"
 version = "1.0.0"
 edition = "2024"
+authors = ["zbz"]
+license = "MIT"
+keywords = ["iot", "gateway", "protocol", "collector"]
+description = "多协议工业物联网网关，采集数据实时发布至 MQTT"
+categories = ["network-programming"]
+homepage = "https://github.com/rusthing/iot"
+repository = "https://github.com/rusthing/iot"
+readme = "README.md"
 
 [dependencies]
-log = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-serde = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-notify-debouncer-mini = { workspace = true }
+config = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "signal"] }
 
 wheel-rs = { workspace = true }
-robotech = { workspace = true, features = ["macros", "app"] }
+# 网关是「无 Web / 无 DB」的服务，仅需 app（启动引导 + 信号）与 macros（bootstrap!/log_call）
+robotech = { workspace = true, features = ["app", "macros"] }
 
 iotg-core = { workspace = true }
 iotg-iec104 = { workspace = true }
@@ -73,4 +30,3 @@ iotg-dlt645 = { workspace = true }
 iotg-s7 = { workspace = true }
 iotg-hj212 = { workspace = true }
 iotg-mqtt = { workspace = true }
-

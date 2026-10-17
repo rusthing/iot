@@ -2,6 +2,11 @@ use serde::Deserialize;
 use std::time::Duration;
 use wheel_rs::serde::duration_serde;
 
+/// # 数据接入配置
+///
+/// ## 字段
+/// * `channel_capacity` - 缓存 DataPoint 通道的容量
+/// * `flush_interval` - 缓存批量写入 InfluxDB 的间隔
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct IotConfig {
@@ -22,10 +27,12 @@ impl Default for IotConfig {
     }
 }
 
+/// 默认通道容量
 fn default_channel_capacity() -> usize {
     2 * 1024 * 1024
 }
 
+/// 默认刷新间隔：5 秒
 fn default_flush_interval() -> Duration {
     Duration::from_secs(5)
 }
